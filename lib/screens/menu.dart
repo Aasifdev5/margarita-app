@@ -4,6 +4,7 @@ import 'package:margarita/screens/address.dart'; // Import AddressScreen
 import 'package:margarita/screens/favourites.dart'; // Import FavouritesScreen
 import 'package:margarita/screens/food_home.dart'; // Import FoodHomeScreen
 import 'package:margarita/screens/shop.dart'; // Import ShopScreen
+import 'package:margarita/screens/orderHistory.dart'; // Import OrderHistoryScreen
 
 class MenuScreen extends StatelessWidget {
   // Function to show logout confirmation dialog
@@ -12,17 +13,14 @@ class MenuScreen extends StatelessWidget {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Confirm Logout'),
-          content: Text('Are you sure you want to logout?'),
+          title: Text('Confirmar Cierre de Sesión'),
+          content: Text('¿Estás seguro de que quieres cerrar sesión?'),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop(); // Close the dialog
               },
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: Colors.grey),
-              ),
+              child: Text('Cancelar', style: TextStyle(color: Colors.grey)),
             ),
             TextButton(
               onPressed: () {
@@ -35,7 +33,7 @@ class MenuScreen extends StatelessWidget {
                 );
               },
               child: Text(
-                'Logout',
+                'Cerrar Sesión',
                 style: TextStyle(color: Colors.orange),
               ),
             ),
@@ -53,7 +51,7 @@ class MenuScreen extends StatelessWidget {
         backgroundColor: Colors.grey[100],
         elevation: 0,
         title: Text(
-          'Menu',
+          'Menú',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -68,7 +66,7 @@ class MenuScreen extends StatelessWidget {
           children: [
             _buildMenuItem(
               icon: Icons.person,
-              title: 'Profile',
+              title: 'Perfil',
               onTap: () {
                 Navigator.push(
                   context,
@@ -78,7 +76,7 @@ class MenuScreen extends StatelessWidget {
             ),
             _buildMenuItem(
               icon: Icons.location_on,
-              title: 'Address',
+              title: 'Dirección',
               onTap: () {
                 Navigator.push(
                   context,
@@ -88,7 +86,7 @@ class MenuScreen extends StatelessWidget {
             ),
             _buildMenuItem(
               icon: Icons.favorite,
-              title: 'Favorites',
+              title: 'Favoritos',
               onTap: () {
                 Navigator.push(
                   context,
@@ -98,7 +96,7 @@ class MenuScreen extends StatelessWidget {
             ),
             _buildMenuItem(
               icon: Icons.logout,
-              title: 'Logout',
+              title: 'Cerrar Sesión',
               onTap: () {
                 _showLogoutDialog(context); // Show confirmation dialog
               },
@@ -110,29 +108,41 @@ class MenuScreen extends StatelessWidget {
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.orange,
         unselectedItemColor: Colors.grey,
-        currentIndex: 4, // Menu selected
+        currentIndex: 4, // Menú selected
         onTap: (index) {
           if (index == 0) {
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => FoodHomeScreen()),
             );
           } else if (index == 1) {
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => ShopScreen()),
+              MaterialPageRoute(builder: (context) => ShopScreen(category: '')),
             );
+          } else if (index == 2) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => OrderHistoryScreen()),
+            );
+          } else if (index == 3) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => FavouritesScreen()),
+            );
+          } else if (index == 4) {
+            // Already on MenuScreen, no navigation needed
           }
         },
-        items: [
+        items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Shop'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
           BottomNavigationBarItem(
             icon: Icon(Icons.favorite_border),
             label: 'Favoritos',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menu'),
+          BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menú'),
         ],
       ),
     );
@@ -146,9 +156,7 @@ class MenuScreen extends StatelessWidget {
     return Card(
       color: Colors.white,
       margin: EdgeInsets.only(bottom: 16.0),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ListTile(
         leading: Icon(icon, color: Colors.orange, size: 30),
         title: Text(

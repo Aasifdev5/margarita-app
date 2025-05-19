@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:margarita/screens/menu.dart'; // Import MenuScreen
 import 'package:margarita/screens/shop.dart'; // Import ShopScreen
 import 'package:margarita/screens/food_home.dart'; // Import FoodHomeScreen
+import 'package:margarita/screens/orderHistory.dart'; // Import OrderHistoryScreen
+import 'package:margarita/screens/favourites.dart'; // Import FavouritesScreen
 
 class ProfileScreen extends StatefulWidget {
   @override
@@ -10,9 +12,9 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   // User data (initial values, replace with actual data from backend)
-  String _fullName = 'John Doe';
-  String _email = 'johndoe@example.com';
-  String _phone = '+1 234 567 8900';
+  String _fullName = 'Juan Pérez';
+  String _email = 'juanperez@ejemplo.com';
+  String _phone = '+52 123 456 7890';
 
   // Controllers for editing fields
   late TextEditingController _nameController;
@@ -51,7 +53,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Show confirmation
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text('Profile updated successfully!')));
+    ).showSnackBar(SnackBar(content: Text('¡Perfil actualizado con éxito!')));
     // Here you can add logic to save data to a backend
   }
 
@@ -63,7 +65,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: Colors.grey[100],
         elevation: 0,
         title: Text(
-          'Profile',
+          'Perfil',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -131,36 +133,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _isEditing
                           ? _buildEditableField(
                             icon: Icons.person,
-                            label: 'Full Name',
+                            label: 'Nombre Completo',
                             controller: _nameController,
                           )
                           : _buildDetailRow(
                             icon: Icons.person,
-                            label: 'Full Name',
+                            label: 'Nombre Completo',
                             value: _fullName,
                           ),
                       SizedBox(height: 16),
                       _isEditing
                           ? _buildEditableField(
                             icon: Icons.email,
-                            label: 'Email',
+                            label: 'Correo Electrónico',
                             controller: _emailController,
                           )
                           : _buildDetailRow(
                             icon: Icons.email,
-                            label: 'Email',
+                            label: 'Correo Electrónico',
                             value: _email,
                           ),
                       SizedBox(height: 16),
                       _isEditing
                           ? _buildEditableField(
                             icon: Icons.phone,
-                            label: 'Phone',
+                            label: 'Teléfono',
                             controller: _phoneController,
                           )
                           : _buildDetailRow(
                             icon: Icons.phone,
-                            label: 'Phone',
+                            label: 'Teléfono',
                             value: _phone,
                           ),
                     ],
@@ -187,7 +189,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 child: Text(
-                  _isEditing ? 'Save Profile' : 'Edit Profile',
+                  _isEditing ? 'Guardar Perfil' : 'Editar Perfil',
                   style: TextStyle(
                     fontSize: 18,
                     color: Colors.white,
@@ -209,7 +211,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     });
                   },
                   child: Text(
-                    'Cancel',
+                    'Cancelar',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ),
@@ -222,34 +224,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.orange,
         unselectedItemColor: Colors.grey,
-        currentIndex: 4, // Menu selected
+        currentIndex: 4, // Menú selected
         onTap: (index) {
           if (index == 0) {
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => FoodHomeScreen()),
             );
           } else if (index == 1) {
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => ShopScreen()),
+              MaterialPageRoute(builder: (context) => ShopScreen(category: '')),
+            );
+          } else if (index == 2) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => OrderHistoryScreen()),
+            );
+          } else if (index == 3) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => FavouritesScreen()),
             );
           } else if (index == 4) {
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => MenuScreen()),
             );
           }
         },
-        items: [
+        items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Shop'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
           BottomNavigationBarItem(
             icon: Icon(Icons.favorite_border),
             label: 'Favoritos',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menu'),
+          BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menú'),
         ],
       ),
     );

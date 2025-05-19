@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:margarita/screens/menu.dart'; // Import MenuScreen
-import 'package:margarita/screens/shop.dart'; // Import ShopScreen
-import 'package:margarita/screens/food_home.dart'; // Import FoodHomeScreen
-import 'package:margarita/screens/orderHistory.dart'; // Import OrderHistoryScreen
-import 'package:margarita/screens/favourites.dart'; // Import FavouritesScreen
+import 'package:margarita/screens/menu.dart';
+import 'package:margarita/screens/shop.dart';
+import 'package:margarita/screens/food_home.dart';
+import 'package:margarita/screens/orderHistory.dart';
+import 'package:margarita/screens/favourites.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class AddressScreen extends StatefulWidget {
   @override
@@ -11,23 +13,84 @@ class AddressScreen extends StatefulWidget {
 }
 
 class _AddressScreenState extends State<AddressScreen> {
-  // List of addresses (replace with backend data)
   List<Map<String, String>> _addresses = [
     {
-      'label': 'Home',
-      'street': '123 Main St',
-      'city': 'Cityville',
-      'postalCode': '12345',
-    },
-    {
-      'label': 'Work',
-      'street': '456 Office Rd',
-      'city': 'Worktown',
-      'postalCode': '67890',
+      'label': 'Casa',
+      'street': '123 Calle Principal',
+      'city': 'Ciudadville',
+      'coordinates': '0.0,0.0',
     },
   ];
 
-  // Function to show dialog for adding or editing an address
+  bool _isGettingLocation = false;
+
+  Future<Map<String, String>?> _getCurrentLocation() async {
+    setState(() {
+      _isGettingLocation = true;
+    });
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Por favor, habilita los servicios de ubicación'),
+          ),
+        );
+        return null;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Permisos de ubicación denegados')),
+          );
+          return null;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Permisos de ubicación denegados permanentemente'),
+          ),
+        );
+        return null;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        return {
+          'street': place.street ?? 'Calle desconocida',
+          'city':
+              '${place.locality ?? ''}${place.locality != null && place.country != null ? ', ' : ''}${place.country ?? ''}',
+          'coordinates': '${position.latitude},${position.longitude}',
+        };
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al obtener la ubicación: $e')),
+      );
+    } finally {
+      setState(() {
+        _isGettingLocation = false;
+      });
+    }
+
+    return null;
+  }
+
   void _showAddressDialog({Map<String, String>? address, int? index}) {
     final isEditing = address != null;
     final labelController = TextEditingController(
@@ -37,158 +100,165 @@ class _AddressScreenState extends State<AddressScreen> {
       text: address?['street'] ?? '',
     );
     final cityController = TextEditingController(text: address?['city'] ?? '');
-    final postalCodeController = TextEditingController(
-      text: address?['postalCode'] ?? '',
-    );
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(isEditing ? 'Edit Address' : 'Add Address'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: labelController,
-                  decoration: InputDecoration(
-                    labelText: 'Label (e.g., Home, Work)',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text(isEditing ? 'Editar Dirección' : 'Agregar Dirección'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: labelController,
+                      decoration: InputDecoration(
+                        labelText: 'Etiqueta (por ejemplo, Casa, Trabajo)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.orange),
+                        ),
+                      ),
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Colors.orange),
+                    SizedBox(height: 16),
+                    TextField(
+                      controller: streetController,
+                      decoration: InputDecoration(
+                        labelText: 'Dirección de la Calle',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.orange),
+                        ),
+                      ),
                     ),
-                  ),
+                    SizedBox(height: 16),
+                    TextField(
+                      controller: cityController,
+                      decoration: InputDecoration(
+                        labelText: 'Ciudad',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.orange),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () async {
+                        final location = await _getCurrentLocation();
+                        if (location != null) {
+                          streetController.text = location['street']!;
+                          cityController.text = location['city']!;
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        minimumSize: Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child:
+                          _isGettingLocation
+                              ? CircularProgressIndicator(color: Colors.white)
+                              : Text(
+                                'Usar Ubicación Actual',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                    ),
+                  ],
                 ),
-                SizedBox(height: 16),
-                TextField(
-                  controller: streetController,
-                  decoration: InputDecoration(
-                    labelText: 'Street Address',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Colors.orange),
-                    ),
-                  ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('Cancelar', style: TextStyle(color: Colors.grey)),
                 ),
-                SizedBox(height: 16),
-                TextField(
-                  controller: cityController,
-                  decoration: InputDecoration(
-                    labelText: 'City',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Colors.orange),
-                    ),
+                TextButton(
+                  onPressed: () {
+                    final newAddress = {
+                      'label': labelController.text.trim(),
+                      'street': streetController.text.trim(),
+                      'city': cityController.text.trim(),
+                      'coordinates': address?['coordinates'] ?? '0.0,0.0',
+                    };
+
+                    if (newAddress['label']!.isEmpty ||
+                        newAddress['street']!.isEmpty ||
+                        newAddress['city']!.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Por favor, completa todos los campos'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    setState(() {
+                      if (isEditing && index != null) {
+                        _addresses[index] = newAddress;
+                      } else {
+                        _addresses.add(newAddress);
+                      }
+                    });
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          isEditing
+                              ? '¡Dirección actualizada!'
+                              : '¡Dirección agregada!',
+                        ),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    isEditing ? 'Actualizar' : 'Agregar',
+                    style: TextStyle(color: Colors.orange),
                   ),
-                ),
-                SizedBox(height: 16),
-                TextField(
-                  controller: postalCodeController,
-                  decoration: InputDecoration(
-                    labelText: 'Postal Code',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Colors.orange),
-                    ),
-                  ),
-                  keyboardType: TextInputType.number,
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('Cancel', style: TextStyle(color: Colors.grey)),
-            ),
-            TextButton(
-              onPressed: () {
-                final newAddress = {
-                  'label': labelController.text.trim(),
-                  'street': streetController.text.trim(),
-                  'city': cityController.text.trim(),
-                  'postalCode': postalCodeController.text.trim(),
-                };
-
-                // Basic validation
-                if (newAddress['label']!.isEmpty ||
-                    newAddress['street']!.isEmpty ||
-                    newAddress['city']!.isEmpty ||
-                    newAddress['postalCode']!.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Please fill in all fields')),
-                  );
-                  return;
-                }
-
-                setState(() {
-                  if (isEditing && index != null) {
-                    _addresses[index] = newAddress; // Update existing address
-                  } else {
-                    _addresses.add(newAddress); // Add new address
-                  }
-                });
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      isEditing ? 'Address updated!' : 'Address added!',
-                    ),
-                  ),
-                );
-              },
-              child: Text(
-                isEditing ? 'Update' : 'Add',
-                style: TextStyle(color: Colors.orange),
-              ),
-            ),
-          ],
+            );
+          },
         );
       },
     );
   }
 
-  // Function to delete an address
   void _deleteAddress(int index) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Delete Address'),
-          content: Text('Are you sure you want to delete this address?'),
+          title: Text('Eliminar Dirección'),
+          content: Text(
+            '¿Estás seguro de que quieres eliminar esta dirección?',
+          ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('Cancel', style: TextStyle(color: Colors.grey)),
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Cancelar', style: TextStyle(color: Colors.grey)),
             ),
             TextButton(
               onPressed: () {
-                setState(() {
-                  _addresses.removeAt(index);
-                });
+                setState(() => _addresses.removeAt(index));
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text('Address deleted!')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('¡Dirección eliminada!')),
+                );
               },
-              child: Text('Delete', style: TextStyle(color: Colors.red)),
+              child: Text('Eliminar', style: TextStyle(color: Colors.red)),
             ),
           ],
         );
@@ -204,7 +274,7 @@ class _AddressScreenState extends State<AddressScreen> {
         backgroundColor: Colors.grey[100],
         elevation: 0,
         title: Text(
-          'Address',
+          'Dirección',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -214,28 +284,24 @@ class _AddressScreenState extends State<AddressScreen> {
         centerTitle: true,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: Colors.orange),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => MenuScreen()),
-            );
-          },
+          onPressed:
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => MenuScreen()),
+              ),
         ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Add New Address Button
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: () {
-                  _showAddressDialog(); // Open dialog to add new address
-                },
+                onPressed: () => _showAddressDialog(),
                 icon: Icon(Icons.add, color: Colors.orange),
                 label: Text(
-                  'Add New Address',
+                  'Agregar Nueva Dirección',
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.orange,
@@ -245,13 +311,12 @@ class _AddressScreenState extends State<AddressScreen> {
               ),
             ),
             SizedBox(height: 16),
-            // List of Addresses
             Expanded(
               child:
                   _addresses.isEmpty
                       ? Center(
                         child: Text(
-                          'No addresses found. Add a new address!',
+                          'No se encontraron direcciones. ¡Agrega una nueva dirección!',
                           style: TextStyle(
                             fontSize: 16,
                             color: Colors.grey[600],
@@ -292,21 +357,19 @@ class _AddressScreenState extends State<AddressScreen> {
                                               Icons.edit,
                                               color: Colors.orange,
                                             ),
-                                            onPressed: () {
-                                              _showAddressDialog(
-                                                address: address,
-                                                index: index,
-                                              );
-                                            },
+                                            onPressed:
+                                                () => _showAddressDialog(
+                                                  address: address,
+                                                  index: index,
+                                                ),
                                           ),
                                           IconButton(
                                             icon: Icon(
                                               Icons.delete,
                                               color: Colors.red,
                                             ),
-                                            onPressed: () {
-                                              _deleteAddress(index);
-                                            },
+                                            onPressed:
+                                                () => _deleteAddress(index),
                                           ),
                                         ],
                                       ),
@@ -322,10 +385,18 @@ class _AddressScreenState extends State<AddressScreen> {
                                   ),
                                   SizedBox(height: 4),
                                   Text(
-                                    '${address['city']!}, ${address['postalCode']!}',
+                                    address['city']!,
                                     style: TextStyle(
                                       fontSize: 16,
                                       color: Colors.grey[600],
+                                    ),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Coordenadas: ${address['coordinates']}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[500],
                                     ),
                                   ),
                                 ],
@@ -342,44 +413,44 @@ class _AddressScreenState extends State<AddressScreen> {
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.orange,
         unselectedItemColor: Colors.grey,
-        currentIndex: 4, // Menu selected
+        currentIndex: 4,
         onTap: (index) {
           if (index == 0) {
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => FoodHomeScreen()),
             );
           } else if (index == 1) {
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => ShopScreen()),
+              MaterialPageRoute(builder: (context) => ShopScreen(category: '')),
             );
           } else if (index == 2) {
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => OrderHistoryScreen()),
             );
           } else if (index == 3) {
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => FavouritesScreen()),
             );
           } else if (index == 4) {
-            Navigator.push(
+            Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => MenuScreen()),
             );
           }
         },
-        items: [
+        items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Shop'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
           BottomNavigationBarItem(
             icon: Icon(Icons.favorite_border),
             label: 'Favoritos',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menu'),
+          BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menú'),
         ],
       ),
     );

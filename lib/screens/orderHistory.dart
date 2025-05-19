@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:margarita/screens/menu.dart'; // Import MenuScreen
-import 'package:margarita/screens/food_home.dart'; // Import FoodHomeScreen
-import 'package:margarita/screens/shop.dart'; // Import ShopScreen
-import 'package:margarita/screens/favourites.dart'; // Import FavouritesScreen
+import 'package:margarita/screens/menu.dart';
+import 'package:margarita/screens/food_home.dart';
+import 'package:margarita/screens/shop.dart';
+import 'package:margarita/screens/favourites.dart';
 
 class OrderHistoryScreen extends StatefulWidget {
   @override
@@ -10,13 +10,12 @@ class OrderHistoryScreen extends StatefulWidget {
 }
 
 class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
-  // List of past orders (replace with backend data)
   List<Map<String, dynamic>> _orders = [
     {
       'orderNumber': 'ORD12345',
       'date': '15 de mayo de 2025',
       'total': 25.99,
-      'items': ['Margherita Pizza', 'Coca-Cola'],
+      'items': ['Pizza Margarita', 'Coca-Cola'],
     },
     {
       'orderNumber': 'ORD12344',
@@ -26,22 +25,21 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     },
   ];
 
-  // Function to show order details
   void _showOrderDetails(Map<String, dynamic> order) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Order #${order['orderNumber']}'),
+          title: Text('Pedido #${order['orderNumber']}'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Date: ${order['date']}'),
+              Text('Fecha: ${order['date']}'),
               SizedBox(height: 8),
               Text('Total: \$${order['total'].toStringAsFixed(2)}'),
               SizedBox(height: 8),
-              Text('Items:'),
+              Text('Artículos:'),
               ...order['items']
                   .map<Widget>(
                     (item) => Padding(
@@ -57,7 +55,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               onPressed: () {
                 Navigator.of(context).pop();
               },
-              child: Text('Close', style: TextStyle(color: Colors.orange)),
+              child: Text('Cerrar', style: TextStyle(color: Colors.orange)),
             ),
           ],
         );
@@ -73,7 +71,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         backgroundColor: Colors.grey[100],
         elevation: 0,
         title: Text(
-          'Order History',
+          'Historial de Pedidos',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -106,7 +104,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                       ),
                       SizedBox(height: 16),
                       Text(
-                        'No orders yet!',
+                        '¡Aún no tienes pedidos!',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -115,7 +113,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                       ),
                       SizedBox(height: 8),
                       Text(
-                        'Your past orders will appear here.',
+                        'Tus pedidos anteriores aparecerán aquí.',
                         style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                         textAlign: TextAlign.center,
                       ),
@@ -141,7 +139,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  'Order #${order['orderNumber']}',
+                                  'Pedido #${order['orderNumber']}',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
@@ -160,7 +158,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                             ),
                             SizedBox(height: 8),
                             Text(
-                              'Date: ${order['date']}',
+                              'Fecha: ${order['date']}',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Colors.grey[600],
@@ -168,7 +166,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                             ),
                             SizedBox(height: 8),
                             Text(
-                              'Items: ${order['items'].join(', ')}',
+                              'Artículos: ${order['items'].join(', ')}',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Colors.grey[600],
@@ -182,7 +180,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                                   _showOrderDetails(order);
                                 },
                                 child: Text(
-                                  'View Details',
+                                  'Ver Detalles',
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: Colors.orange,
@@ -202,7 +200,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.orange,
         unselectedItemColor: Colors.grey,
-        currentIndex: 2, // Pedidos selected
+        currentIndex: 2,
         onTap: (index) {
           if (index == 0) {
             Navigator.push(
@@ -228,13 +226,13 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         },
         items: [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Shop'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
           BottomNavigationBarItem(
             icon: Icon(Icons.favorite_border),
             label: 'Favoritos',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menu'),
+          BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menú'),
         ],
       ),
     );

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:margarita/screens/shop.dart';
-import 'package:margarita/screens/cart.dart';
-import 'package:margarita/screens/menu.dart';
-import 'package:margarita/screens/orderHistory.dart';
-import 'package:margarita/screens/favourites.dart';
+import 'package:carousel_slider_plus/carousel_slider_plus.dart'; // Updated import
+import 'package:margarita/screens/shop.dart'; // Import ShopScreen
+import 'package:margarita/screens/menu.dart'; // Import MenuScreen
+import 'package:margarita/screens/orderHistory.dart'; // Import OrderHistoryScreen
+import 'package:margarita/screens/favourites.dart'; // Import FavouritesScreen
+import 'package:geolocator/geolocator.dart'; // For location services
+import 'package:geocoding/geocoding.dart'; // For converting coordinates to address
+import 'package:permission_handler/permission_handler.dart'; // For handling permissions
+import 'package:url_launcher/url_launcher.dart'; // For launching WhatsApp
 
 class FoodHomeScreen extends StatefulWidget {
   @override
@@ -13,11 +17,99 @@ class FoodHomeScreen extends StatefulWidget {
 class _FoodHomeScreenState extends State<FoodHomeScreen>
     with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
-  List<Map<String, dynamic>> cartItems = [];
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   TextEditingController _searchController = TextEditingController();
   bool _showSearch = false;
+  bool _hasShownLocationPopup = false; // Track if pop-up has been shown
+  String _currentAddress = '123 Main St, Cityville'; // Default address
+
+  // List of slider items
+  final List<Map<String, dynamic>> sliderItems = [
+    {
+      'imageUrl':
+          'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
+      'title': '¡Pizza con 30% de descuento!',
+      'onTap': (BuildContext context) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ShopScreen(category: 'Pizza'),
+          ),
+        );
+      },
+    },
+    {
+      'imageUrl':
+          'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
+      'title': '¡Hamburguesas irresistibles!',
+      'onTap': (BuildContext context) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ShopScreen(category: 'Hamburguesas'),
+          ),
+        );
+      },
+    },
+    {
+      'imageUrl':
+          'https://images.unsplash.com/photo-1523049673857-eb18f78959f8',
+      'title': '¡Tacos al mejor precio!',
+      'onTap': (BuildContext context) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ShopScreen(category: 'Tacos'),
+          ),
+        );
+      },
+    },
+  ];
+
+  // Define categories with their respective products
+  final List<Map<String, dynamic>> categories = [
+    {
+      'name': 'Italiana',
+      'products': [
+        {
+          'imageUrl':
+              'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
+          'name': 'Pizza',
+        },
+      ],
+    },
+    {
+      'name': 'Japonesa',
+      'products': [
+        {
+          'imageUrl':
+              'https://images.unsplash.com/photo-1528731708534-816fe59f90cb',
+          'name': 'Sushi',
+        },
+      ],
+    },
+    {
+      'name': 'Americana',
+      'products': [
+        {
+          'imageUrl':
+              'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
+          'name': 'Burger',
+        },
+      ],
+    },
+    {
+      'name': 'Mexicana',
+      'products': [
+        {
+          'imageUrl':
+              'https://images.unsplash.com/photo-1523049673857-eb18f78959f8',
+          'name': 'Tacos',
+        },
+      ],
+    },
+  ];
 
   @override
   void initState() {
@@ -30,6 +122,14 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _animationController.forward();
+
+    // Show location pop-up when the screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_hasShownLocationPopup) {
+        _showLocationPopup();
+        _hasShownLocationPopup = true;
+      }
+    });
   }
 
   @override
@@ -44,10 +144,12 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       _selectedIndex = index;
     });
 
-    if (index == 1) {
+    if (index == 0) {
+      // Already on FoodHomeScreen, no navigation needed
+    } else if (index == 1) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => ShopScreen()),
+        MaterialPageRoute(builder: (context) => ShopScreen(category: '')),
       );
     } else if (index == 2) {
       Navigator.push(
@@ -77,9 +179,205 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   }
 
   void _performSearch() {
-    // Implement your search logic here
-    print("Searching for: ${_searchController.text}");
-    // You can navigate to search results or filter items
+    if (_searchController.text.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Buscando "${_searchController.text}"...')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Por favor, ingresa un término de búsqueda')),
+      );
+    }
+    // Implement search logic here
+  }
+
+  // Request location permission and get the user's location
+  Future<Position?> _getUserLocation() async {
+    var permissionStatus = await Permission.location.request();
+    if (permissionStatus.isGranted) {
+      try {
+        Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+        return position;
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al obtener la ubicación: $e')),
+        );
+        return null;
+      }
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Permiso de ubicación denegado')));
+      return null;
+    }
+  }
+
+  // Convert coordinates to a readable address
+  Future<String> _getAddressFromCoordinates(
+    double latitude,
+    double longitude,
+  ) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        latitude,
+        longitude,
+      );
+      Placemark place = placemarks[0];
+      return '${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}';
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo obtener la dirección: $e')),
+      );
+      return 'Dirección no disponible';
+    }
+  }
+
+  // Share location via WhatsApp
+  Future<void> _shareLocationViaWhatsApp(
+    double latitude,
+    double longitude,
+    String address,
+  ) async {
+    String googleMapsLink =
+        'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+    String message =
+        'Hola, aquí está mi ubicación para el envío:\n$address\n$googleMapsLink';
+
+    // Primary URL scheme to open WhatsApp directly
+    String whatsappUrl = 'whatsapp://send?text=${Uri.encodeFull(message)}';
+
+    // Fallback URL scheme to open WhatsApp via browser
+    String fallbackUrl = 'https://wa.me/?text=${Uri.encodeFull(message)}';
+
+    try {
+      // Check if the primary WhatsApp URL can be launched
+      if (await canLaunchUrl(Uri.parse(whatsappUrl))) {
+        await launchUrl(
+          Uri.parse(whatsappUrl),
+          mode: LaunchMode.externalApplication, // Ensure it opens in WhatsApp
+        );
+      } else {
+        // If WhatsApp isn't installed, try the fallback URL in a browser
+        if (await canLaunchUrl(Uri.parse(fallbackUrl))) {
+          await launchUrl(
+            Uri.parse(fallbackUrl),
+            mode: LaunchMode.platformDefault, // Open in browser as fallback
+          );
+        } else {
+          throw 'No se pudo abrir WhatsApp ni el navegador.';
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Error al intentar abrir WhatsApp. Asegúrate de tener WhatsApp instalado o intenta de nuevo.',
+          ),
+        ),
+      );
+    }
+  }
+
+  // Show the location pop-up
+  void _showLocationPopup() {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Prevent dismissing by tapping outside
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          backgroundColor: Colors.orange,
+          content: Row(
+            children: [
+              Icon(Icons.location_on, color: Colors.white, size: 30),
+              SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ACTIVA TU UBICACIÓN',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      'Comparte tu ubicación para realizar el envío',
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog on "X"
+              },
+              child: Text(
+                'X',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  Position? position = await _getUserLocation();
+                  if (position != null) {
+                    String address = await _getAddressFromCoordinates(
+                      position.latitude,
+                      position.longitude,
+                    );
+                    setState(() {
+                      _currentAddress = address; // Update the displayed address
+                    });
+                    await _shareLocationViaWhatsApp(
+                      position.latitude,
+                      position.longitude,
+                      address,
+                    );
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error al activar la ubicación: $e'),
+                    ),
+                  );
+                } finally {
+                  Navigator.of(context).pop(); // Always close the dialog
+                }
+              },
+              child: Text(
+                'Activar',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -89,14 +387,14 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 2,
-        automaticallyImplyLeading: false, // This removes the back button
+        automaticallyImplyLeading: false,
         title:
             _showSearch
                 ? TextField(
                   controller: _searchController,
                   autofocus: true,
                   decoration: InputDecoration(
-                    hintText: 'Search food...',
+                    hintText: 'Buscar comida...',
                     border: InputBorder.none,
                     suffixIcon: IconButton(
                       icon: Icon(Icons.close),
@@ -107,11 +405,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                 )
                 : GestureDetector(
                   onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Change location feature coming soon!'),
-                      ),
-                    );
+                    _showLocationPopup();
                   },
                   child: Row(
                     children: [
@@ -122,7 +416,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Delivery to',
+                              'Entregar en',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey[600],
@@ -130,7 +424,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                               ),
                             ),
                             Text(
-                              '123 Main St, Cityville',
+                              _currentAddress,
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Colors.black87,
@@ -144,73 +438,12 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                     ],
                   ),
                 ),
-        actions:
-            _showSearch
-                ? [
-                  IconButton(
-                    icon: Icon(Icons.search, color: Colors.orange),
-                    onPressed: _performSearch,
-                  ),
-                ]
-                : [
-                  IconButton(
-                    icon: Icon(Icons.search, color: Colors.orange, size: 28),
-                    onPressed: _toggleSearch,
-                  ),
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          Icons.shopping_cart,
-                          color: Colors.orange,
-                          size: 28,
-                        ),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => CartScreen(cartItems: cartItems),
-                            ),
-                          ).then((value) {
-                            // Update cart count when returning from cart screen
-                            if (value != null) {
-                              setState(() {
-                                cartItems = value;
-                              });
-                            }
-                          });
-                        },
-                      ),
-                      if (cartItems.isNotEmpty)
-                        Positioned(
-                          right: 8,
-                          top: 8,
-                          child: Container(
-                            padding: EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                            ),
-                            constraints: BoxConstraints(
-                              minWidth: 18,
-                              minHeight: 18,
-                            ),
-                            child: Text(
-                              '${cartItems.length}',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
+        actions: [
+          IconButton(
+            icon: Icon(Icons.search, color: Colors.orange, size: 28),
+            onPressed: _toggleSearch,
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -222,177 +455,109 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Promotional Banner
-                Container(
-                  height: 180,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.orange.shade400, Colors.orange.shade600],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
+                // Slider (Promotional Banner)
+                CarouselSlider(
+                  options: CarouselOptions(
+                    height: 180,
+                    autoPlay: true,
+                    autoPlayInterval: Duration(seconds: 3),
+                    enlargeCenterPage: true,
+                    viewportFraction: 0.9,
+                    aspectRatio: 2.0,
                   ),
-                  child: Stack(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'UP TO',
-                              style: TextStyle(
-                                fontSize: 22,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 1.2,
-                              ),
-                            ),
-                            Text(
-                              '30% OFF',
-                              style: TextStyle(
-                                fontSize: 36,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            ElevatedButton(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ShopScreen(),
+                  items:
+                      sliderItems.map((item) {
+                        return Builder(
+                          builder: (BuildContext context) {
+                            return Container(
+                              margin: EdgeInsets.symmetric(horizontal: 5.0),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 10,
+                                    offset: Offset(0, 4),
                                   ),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: Colors.orange,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
+                                ],
                               ),
-                              child: Text(
-                                'Shop Now',
-                                style: TextStyle(
-                                  color: Colors.orange,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: Image.network(
+                                      item['imageUrl'],
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: 180,
+                                      errorBuilder:
+                                          (context, error, stackTrace) => Icon(
+                                            Icons.local_pizza,
+                                            size: 100,
+                                            color: Colors.orange,
+                                          ),
+                                    ),
+                                  ),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(20),
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.black.withOpacity(0.6),
+                                          Colors.transparent,
+                                        ],
+                                        begin: Alignment.bottomCenter,
+                                        end: Alignment.topCenter,
+                                      ),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item['title'],
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 160,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.only(
-                              topRight: Radius.circular(20),
-                              bottomRight: Radius.circular(20),
-                            ),
-                            color: Colors.white,
-                          ),
-                          child: Image.network(
-                            'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
-                            fit: BoxFit.cover,
-                            errorBuilder:
-                                (context, error, stackTrace) => Icon(
-                                  Icons.local_pizza,
-                                  size: 100,
-                                  color: Colors.orange,
-                                ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                            );
+                          },
+                        );
+                      }).toList(),
                 ),
                 SizedBox(height: 24),
-                // Favourite Food Section
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                // Categories Section - 2 categories per row
+                Column(
                   children: [
-                    Text(
-                      'Favourite Food',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
+                    // First row: Italiana and Japonesa
+                    Row(
+                      children: [
+                        Expanded(child: _buildCategorySection(categories[0])),
+                        SizedBox(width: 16),
+                        Expanded(child: _buildCategorySection(categories[1])),
+                      ],
                     ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => ShopScreen()),
-                        );
-                      },
-                      child: Text(
-                        'See All',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.orange,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                    SizedBox(height: 32),
+                    // Second row: Americana and Mexicana
+                    Row(
+                      children: [
+                        Expanded(child: _buildCategorySection(categories[2])),
+                        SizedBox(width: 16),
+                        Expanded(child: _buildCategorySection(categories[3])),
+                      ],
                     ),
                   ],
-                ),
-                SizedBox(height: 12),
-                Container(
-                  height: 160,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      _buildFoodCard(
-                        imageUrl:
-                            'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
-                        label: 'Pizza',
-                        price: '12.00 €',
-                      ),
-                      SizedBox(width: 12),
-                      _buildFoodCard(
-                        imageUrl:
-                            'https://images.unsplash.com/photo-1528731708534-816fe59f90cb',
-                        label: 'Sushi',
-                        price: '15.00 €',
-                      ),
-                      SizedBox(width: 12),
-                      _buildFoodCard(
-                        imageUrl:
-                            'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
-                        label: 'Burger',
-                        price: '9.50 €',
-                      ),
-                      SizedBox(width: 12),
-                      _buildFoodCard(
-                        imageUrl:
-                            'https://images.unsplash.com/photo-1523049673857-eb18f78959f8',
-                        label: 'Tacos',
-                        price: '8.00 €',
-                      ),
-                    ],
-                  ),
                 ),
               ],
             ),
@@ -407,7 +572,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         onTap: _onItemTapped,
         items: [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Shop'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
           BottomNavigationBarItem(
             icon: Icon(Icons.favorite_border),
@@ -419,71 +584,112 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     );
   }
 
-  Widget _buildFoodCard({
-    required String imageUrl,
-    required String label,
-    required String price,
-  }) {
+  Widget _buildCategorySection(Map<String, dynamic> category) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ShopScreen(category: category['name']),
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            category['name'],
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+              letterSpacing: 0.5,
+            ),
+          ),
+          SizedBox(height: 16),
+          Container(
+            height: 180,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(
+                horizontal: 16.0,
+              ), // Add symmetric padding
+              children:
+                  (category['products'] as List<Map<String, dynamic>>)
+                      .asMap()
+                      .entries
+                      .map((entry) {
+                        int index = entry.key;
+                        Map<String, dynamic> product = entry.value;
+                        // Add right padding to all items except the last one
+                        bool isLastItem =
+                            index == (category['products'] as List).length - 1;
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            right: isLastItem ? 0 : 16.0,
+                          ),
+                          child: _buildFoodCard(
+                            imageUrl: product['imageUrl'],
+                            label: product['name'],
+                          ),
+                        );
+                      })
+                      .toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFoodCard({required String imageUrl, required String label}) {
     return FadeTransition(
       opacity: _fadeAnimation,
-      child: Container(
-        width: 120,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
+      child: GestureDetector(
+        onTap: () {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Seleccionaste $label')));
+        },
+        child: Container(
+          width: 120,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.network(
+                  imageUrl,
+                  width: 120,
+                  height: 120,
+                  fit: BoxFit.cover,
+                  errorBuilder:
+                      (context, error, stackTrace) => Container(
+                        width: 120,
+                        height: 120,
+                        color: Colors.grey[300],
+                        child: Icon(
+                          Icons.fastfood,
+                          size: 60,
+                          color: Colors.orange,
+                        ),
+                      ),
+                ),
               ),
-              child: Image.network(
-                imageUrl,
-                width: 120,
-                height: 90,
-                fit: BoxFit.cover,
-                errorBuilder:
-                    (context, error, stackTrace) =>
-                        Icon(Icons.fastfood, size: 60, color: Colors.orange),
+              SizedBox(height: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    price,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.orange,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

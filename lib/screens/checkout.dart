@@ -1,228 +1,110 @@
 import 'package:flutter/material.dart';
-import 'package:margarita/screens/ordersuccess.dart'; // Import OrderSuccessScreen
-import 'package:margarita/screens/food_home.dart'; // Import FoodHomeScreen
-import 'package:margarita/screens/menu.dart'; // Import MenuScreen
-import 'package:margarita/screens/shop.dart'; // Import ShopScreen
+import 'package:margarita/screens/ordersuccess.dart';
+import 'package:margarita/screens/food_home.dart';
+import 'package:margarita/screens/menu.dart';
+import 'package:margarita/screens/shop.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
-  final double shippingCost;
 
-  CheckoutScreen({required this.cartItems, this.shippingCost = 2.00});
+  const CheckoutScreen({Key? key, required this.cartItems}) : super(key: key);
 
   @override
   _CheckoutScreenState createState() => _CheckoutScreenState();
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  String _paymentMethod = 'Efectivo'; // Default payment method
-  String _location = '123 Main St, City'; // Updated default location
-  String _note = ''; // Note field
+  String _paymentMethod = 'Efectivo';
+  String _location = 'Seleccionar ubicación';
+  String _note = '';
+  bool _isLoadingLocation = false;
 
   double _calculateSubtotal() {
     return widget.cartItems.fold(0.0, (sum, item) {
       String priceStr = item['price'].replaceAll(' €', '').replaceAll(',', '.');
       double price = double.parse(priceStr);
-      return sum + price;
+      int quantity = item['quantity'] ?? 1;
+      return sum + (price * quantity);
     });
   }
 
-  double _calculateTotal() {
-    return _calculateSubtotal() + widget.shippingCost;
-  }
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Ordered Items
-                ...widget.cartItems.asMap().entries.map((entry) {
-                  int index = entry.key;
-                  var item = entry.value;
-                  return _buildOrderItem(
-                    imageUrl: item['imageUrl'] as String?,
-                    name: item['name'],
-                    price: item['price'],
-                  );
-                }).toList(),
-                SizedBox(height: 24),
-                // Cost Breakdown
-                _buildCostRow(
-                  'Subtotal',
-                  '${_calculateSubtotal().toStringAsFixed(2)} €',
-                ),
-                SizedBox(height: 8),
-                _buildCostRow(
-                  'Envío',
-                  '${widget.shippingCost.toStringAsFixed(2)} €',
-                ),
-                SizedBox(height: 8),
-                _buildCostRow(
-                  'Total',
-                  '${_calculateTotal().toStringAsFixed(2)} €',
-                  isTotal: true,
-                ),
-                SizedBox(height: 24),
-                // Payment Method
-                Text(
-                  'Pago',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Row(
-                  children: [
-                    _buildPaymentOption(
-                      'Efectivo',
-                      'Efectivo' == _paymentMethod,
-                    ),
-                    SizedBox(width: 16),
-                    _buildPaymentOption('QR', 'QR' == _paymentMethod),
-                  ],
-                ),
-                SizedBox(height: 24),
-                // Location
-                Text(
-                  'Ubicación',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () {
-                    // Handle location change
-                    setState(() {
-                      _location = '123 Main St, City'; // Update this as needed
-                    });
-                  },
-                  child: Row(
-                    children: [
-                      Icon(Icons.location_on, color: Colors.orange),
-                      SizedBox(width: 8),
-                      Text(
-                        _location,
-                        style: TextStyle(fontSize: 16, color: Colors.orange),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 24),
-                // Add Note
-                Text(
-                  'Añadir una nota',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                TextField(
-                  onChanged: (value) {
-                    setState(() {
-                      _note = value;
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Añadir una nota',
-                    hintStyle: TextStyle(color: Colors.grey),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                  ),
-                ),
-                SizedBox(height: 24),
-                // Place Order Button
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder:
-                            (context) => OrderSuccessScreen(
-                              orderNumber: '123456', // Example order number
-                              paymentMethod: _paymentMethod,
-                              address: _location,
-                            ),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    minimumSize: Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                  ),
-                  child: Text(
-                    'Realizar pedido',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Por favor active los servicios de ubicación'),
+          ),
+        );
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Permisos de ubicación denegados')),
+          );
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Los permisos de ubicación están permanentemente denegados',
             ),
           ),
-        ),
-      ),
-      // Bottom Navigation Bar
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.orange,
-        unselectedItemColor: Colors.grey,
-        currentIndex: 0, // Home selected
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => FoodHomeScreen()),
-            );
-          } else if (index == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => ShopScreen()),
-            );
-          } else if (index == 4) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => MenuScreen()),
-            );
-          }
-        },
-        items: [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Shop'),
-          BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.favorite_border),
-            label: 'Favoritos',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.menu),
-            label: 'Menu',
-          ), // Changed to Menu
-        ],
-      ),
-    );
+        );
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        setState(() {
+          _location =
+              '${place.street ?? ''}, ${place.locality ?? ''}, ${place.country ?? ''}';
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al obtener la ubicación: $e')),
+      );
+    } finally {
+      setState(() {
+        _isLoadingLocation = false;
+      });
+    }
   }
 
   Widget _buildOrderItem({
     String? imageUrl,
     required String name,
     required String price,
+    int quantity = 1,
   }) {
     return Container(
-      margin: EdgeInsets.only(bottom: 16.0),
+      margin: const EdgeInsets.only(bottom: 16.0),
       child: Row(
         children: [
-          // Food Image
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child:
@@ -233,26 +115,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       height: 60,
                       fit: BoxFit.cover,
                       errorBuilder:
-                          (context, error, stackTrace) => Icon(
+                          (context, error, stackTrace) => const Icon(
                             Icons.fastfood,
                             size: 60,
                             color: Colors.orange,
                           ),
                     )
-                    : Icon(Icons.fastfood, size: 60, color: Colors.orange),
+                    : const Icon(
+                      Icons.fastfood,
+                      size: 60,
+                      color: Colors.orange,
+                    ),
           ),
-          SizedBox(width: 16),
-          // Food Details
+          const SizedBox(width: 16),
           Expanded(
-            child: Text(
-              name,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '$quantity x $price',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+              ],
             ),
           ),
-          // Price
           Text(
-            price,
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            '${(double.parse(price.replaceAll(' €', '').replaceAll(',', '.')) * quantity).toStringAsFixed(2)} €',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -260,24 +156,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _buildCostRow(String label, String value, {bool isTotal = false}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: isTotal ? 20 : 16,
-            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: isTotal ? 20 : 16,
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+            ),
           ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: isTotal ? 20 : 16,
-            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: isTotal ? 20 : 16,
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -290,7 +189,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           });
         },
         child: Container(
-          padding: EdgeInsets.symmetric(vertical: 12.0),
+          padding: const EdgeInsets.symmetric(vertical: 12.0),
           decoration: BoxDecoration(
             border: Border.all(color: isSelected ? Colors.orange : Colors.grey),
             borderRadius: BorderRadius.circular(10),
@@ -312,10 +211,205 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 },
                 activeColor: Colors.orange,
               ),
-              Text(label, style: TextStyle(fontSize: 16)),
+              Text(label, style: const TextStyle(fontSize: 16)),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text('Verificar'),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.orange,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tu pedido',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                ...widget.cartItems.map(
+                  (item) => _buildOrderItem(
+                    imageUrl: item['imageUrl'] as String?,
+                    name: item['name'],
+                    price: item['price'],
+                    quantity: item['quantity'] ?? 1,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Divider(),
+                _buildCostRow(
+                  'total parcial',
+                  '${_calculateSubtotal().toStringAsFixed(2)} €',
+                ),
+                const SizedBox(height: 16),
+                _buildCostRow(
+                  'Total',
+                  '${_calculateSubtotal().toStringAsFixed(2)} €',
+                  isTotal: true,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Método de pago',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _buildPaymentOption(
+                      'Efectivo',
+                      'Efectivo' == _paymentMethod,
+                    ),
+                    const SizedBox(width: 16),
+                    _buildPaymentOption('QR', 'QR' == _paymentMethod),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Ubicación de entrega',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: _getCurrentLocation,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.location_on, color: Colors.orange),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child:
+                              _isLoadingLocation
+                                  ? const Text('Obteniendo ubicación...')
+                                  : Text(
+                                    _location,
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
+                        ),
+                        if (!_isLoadingLocation)
+                          const Icon(Icons.arrow_forward_ios, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Notas adicionales',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  onChanged: (value) => setState(() => _note = value),
+                  decoration: InputDecoration(
+                    hintText: 'Añadir una nota',
+                    hintStyle: const TextStyle(color: Colors.grey),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[100],
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton(
+                  onPressed: () {
+                    if (_location == 'Seleccionar ubicación') {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Por favor seleccione una ubicación'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) => OrderSuccessScreen(
+                              orderNumber: DateTime.now().millisecondsSinceEpoch
+                                  .toString()
+                                  .substring(5),
+                              paymentMethod: _paymentMethod,
+                              address: _location,
+                            ),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                  ),
+                  child: const Text(
+                    'Confirmar pedido',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Colors.orange,
+        unselectedItemColor: Colors.grey,
+        currentIndex: 0,
+        onTap: (index) {
+          if (index == 0) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => FoodHomeScreen()),
+            );
+          } else if (index == 1) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => ShopScreen()),
+            );
+          } else if (index == 4) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => MenuScreen()),
+            );
+          }
+        },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
+          BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.favorite_border),
+            label: 'Favoritos',
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menu'),
+        ],
       ),
     );
   }

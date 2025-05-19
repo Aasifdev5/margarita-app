@@ -1,39 +1,113 @@
 import 'package:flutter/material.dart';
-import 'package:margarita/screens/cart.dart'; // Import the CartScreen
-import 'package:margarita/screens/menu.dart'; // Import MenuScreen
-import 'package:margarita/screens/food_home.dart'; // Import the FoodHomeScreen
-import 'package:margarita/screens/orderHistory.dart'; // Import OrderHistoryScreen
-import 'package:margarita/screens/favourites.dart'; // Import FavouritesScreen
+import 'package:margarita/screens/cart.dart';
+import 'package:margarita/screens/menu.dart';
+import 'package:margarita/screens/food_home.dart';
+import 'package:margarita/screens/orderHistory.dart';
+import 'package:margarita/screens/favourites.dart';
 
 class ShopScreen extends StatefulWidget {
+  final String category;
+
+  const ShopScreen({Key? key, this.category = ''}) : super(key: key);
+
   @override
   _ShopScreenState createState() => _ShopScreenState();
 }
 
 class _ShopScreenState extends State<ShopScreen> {
   List<Map<String, dynamic>> cartItems = [];
-  // List to track favorite items
   List<String> favoriteItems = [];
+  TextEditingController _searchController = TextEditingController();
+  bool _showSearch = false;
+
+  final Map<String, List<Map<String, dynamic>>> categoryItems = {
+    'Italiana': [
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
+        'name': 'Pizza Margarita',
+        'description': 'Tomate, mozzarella y albahaca',
+        'price': '12,00 €',
+      },
+    ],
+    'Japonesa': [
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1528731708534-816fe59f90cb',
+        'name': 'Sushi',
+        'description': 'Variedad de sushi fresco',
+        'price': '15,00 €',
+      },
+    ],
+    'Americana': [
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
+        'name': 'Cheeseburger',
+        'description': 'Lleva queso, lechuga y tomate',
+        'price': '9,50 €',
+      },
+    ],
+    'Mexicana': [
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1523049673857-eb18f78959f8',
+        'name': 'Tacos',
+        'description': 'Tacos con carne y salsa',
+        'price': '8,00 €',
+      },
+    ],
+    'Pizza': [
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
+        'name': 'Pizza Margarita',
+        'description': 'Tomate, mozzarella y albahaca',
+        'price': '12,00 €',
+      },
+    ],
+    'Hamburguesas': [
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
+        'name': 'Cheeseburger',
+        'description': 'Lleva queso, lechuga y tomate',
+        'price': '9,50 €',
+      },
+    ],
+    'Tacos': [
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1523049673857-eb18f78959f8',
+        'name': 'Tacos',
+        'description': 'Tacos con carne y salsa',
+        'price': '8,00 €',
+      },
+    ],
+  };
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   void _addToCart(Map<String, dynamic> item) {
     setState(() {
-      bool itemExists = false;
-      for (var cartItem in cartItems) {
-        if (cartItem['name'] == item['name']) {
-          cartItem['quantity'] += 1;
-          itemExists = true;
-          break;
-        }
-      }
-      if (!itemExists) {
+      final existing = cartItems.firstWhere(
+        (cartItem) => cartItem['name'] == item['name'],
+        orElse: () => {},
+      );
+
+      if (existing.isNotEmpty) {
+        existing['quantity'] += 1;
+      } else {
         cartItems.add({...item, 'quantity': 1});
       }
     });
 
-    // Navigate to CartScreen
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => CartScreen(cartItems: cartItems)),
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${item['name']} agregado al carrito!')),
     );
   }
 
@@ -42,37 +116,141 @@ class _ShopScreenState extends State<ShopScreen> {
       if (favoriteItems.contains(itemName)) {
         favoriteItems.remove(itemName);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$itemName removed from favorites!')),
+          SnackBar(content: Text('$itemName eliminado de favoritos!')),
         );
       } else {
         favoriteItems.add(itemName);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$itemName added to favorites!')),
+          SnackBar(content: Text('$itemName agregado a favoritos!')),
         );
       }
     });
   }
 
+  void _toggleSearch() {
+    setState(() {
+      _showSearch = !_showSearch;
+      if (!_showSearch) _searchController.clear();
+    });
+  }
+
+  void _performSearch() {
+    final searchTerm = _searchController.text.trim();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          searchTerm.isEmpty
+              ? 'Por favor, ingresa un término de búsqueda'
+              : 'Buscando "$searchTerm"...',
+        ),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _getFilteredItems() {
+    if (widget.category.isEmpty) {
+      final seen = <String>{};
+      return categoryItems.values.expand((items) => items).where((item) {
+        final name = item['name'];
+        if (seen.contains(name)) return false;
+        seen.add(name);
+        return true;
+      }).toList();
+    } else {
+      return categoryItems[widget.category] ?? [];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final filteredItems = _getFilteredItems();
+
     return DefaultTabController(
-      length: 4, // Number of tabs
+      length: 4,
       child: Scaffold(
         backgroundColor: Colors.grey[100],
         appBar: PreferredSize(
-          preferredSize: Size.fromHeight(50.0),
+          preferredSize: Size.fromHeight(100.0),
           child: AppBar(
-            backgroundColor: Colors.grey[100],
-            elevation: 0,
-            title: Text(
-              'Shop',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
-            ),
+            backgroundColor: Colors.white,
+            elevation: 2,
+            title:
+                _showSearch
+                    ? TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'Buscar comida...',
+                        border: InputBorder.none,
+                        suffixIcon: IconButton(
+                          icon: Icon(Icons.close),
+                          onPressed: _toggleSearch,
+                        ),
+                      ),
+                      onSubmitted: (_) => _performSearch(),
+                    )
+                    : Text(
+                      widget.category.isEmpty ? 'Tienda' : widget.category,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
             centerTitle: true,
+            actions:
+                _showSearch
+                    ? [
+                      IconButton(
+                        icon: Icon(Icons.search, color: Colors.orange),
+                        onPressed: _performSearch,
+                      ),
+                    ]
+                    : [
+                      IconButton(
+                        icon: Icon(Icons.search, color: Colors.orange),
+                        onPressed: _toggleSearch,
+                      ),
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          IconButton(
+                            icon: Icon(
+                              Icons.shopping_cart,
+                              color: Colors.orange,
+                            ),
+                            onPressed: () async {
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder:
+                                      (_) => CartScreen(cartItems: cartItems),
+                                ),
+                              );
+                              if (result != null) {
+                                setState(() => cartItems = result);
+                              }
+                            },
+                          ),
+                          if (cartItems.isNotEmpty)
+                            Positioned(
+                              right: 8,
+                              top: 8,
+                              child: CircleAvatar(
+                                radius: 10,
+                                backgroundColor: Colors.red,
+                                child: Text(
+                                  '${cartItems.length}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
             bottom: TabBar(
               labelColor: Colors.orange,
               unselectedLabelColor: Colors.grey,
@@ -88,96 +266,52 @@ class _ShopScreenState extends State<ShopScreen> {
         ),
         body: TabBarView(
           children: [
-            // Clásicos Tab
             ListView(
               padding: EdgeInsets.all(16.0),
-              children: [
-                _buildFoodItem(
-                  imageUrl:
-                      'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
-                  name: 'Cheeseburger',
-                  description: 'Lleva queso, lechuga y tomate',
-                  price: '9,50 €',
-                  onAdd:
-                      () => _addToCart({
-                        'imageUrl':
-                            'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
-                        'name': 'Cheeseburger',
-                        'price': '9,50 €',
-                      }),
-                ),
-                SizedBox(height: 16),
-                _buildFoodItem(
-                  imageUrl:
-                      'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
-                  name: 'Pizza Margarita',
-                  description: 'Tomate, mozzarella y albahaca',
-                  price: '12,00 €',
-                  onAdd:
-                      () => _addToCart({
-                        'imageUrl':
-                            'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
-                        'name': 'Pizza Margarita',
-                        'price': '12,00 €',
-                      }),
-                ),
-                SizedBox(height: 16),
-                _buildFoodItem(
-                  imageUrl:
-                      'https://images.unsplash.com/photo-1512621776951-a57141f2eefd',
-                  name: 'Ensalada César',
-                  description: 'Con lechuga romana, crutones y queso',
-                  price: '7,50 €',
-                  onAdd:
-                      () => _addToCart({
-                        'imageUrl':
-                            'https://images.unsplash.com/photo-1512621776951-a57141f2eefd',
-                        'name': 'Ensalada César',
-                        'price': '7,50 €',
-                      }),
-                ),
-              ],
+              children:
+                  filteredItems
+                      .map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 16.0),
+                          child: _buildFoodItem(
+                            imageUrl: item['imageUrl'],
+                            name: item['name'],
+                            description: item['description'],
+                            price: item['price'],
+                            onAdd: () => _addToCart(item),
+                          ),
+                        ),
+                      )
+                      .toList(),
             ),
-            // Snacks Tab (Placeholder)
             Center(child: Text('Snacks Tab')),
-            // Bebidas Tab (Placeholder)
             Center(child: Text('Bebidas Tab')),
-            // Postres Tab (Placeholder)
             Center(child: Text('Postres Tab')),
           ],
         ),
-        // Bottom Navigation Bar
         bottomNavigationBar: BottomNavigationBar(
           type: BottomNavigationBarType.fixed,
           selectedItemColor: Colors.orange,
           unselectedItemColor: Colors.grey,
-          currentIndex: 1, // Shop selected
+          currentIndex: 1,
           onTap: (index) {
-            if (index == 0) {
+            final pages = [
+              FoodHomeScreen(),
+              null, // current
+              OrderHistoryScreen(),
+              FavouritesScreen(),
+              MenuScreen(),
+            ];
+            if (index != 1) {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => FoodHomeScreen()),
-              );
-            } else if (index == 2) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => OrderHistoryScreen()),
-              );
-            } else if (index == 3) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => FavouritesScreen()),
-              );
-            } else if (index == 4) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => MenuScreen()),
+                MaterialPageRoute(builder: (_) => pages[index]!),
               );
             }
           },
-          items: [
+          items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-            BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Shop'),
+            BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
             BottomNavigationBarItem(
               icon: Icon(Icons.receipt),
               label: 'Pedidos',
@@ -200,17 +334,16 @@ class _ShopScreenState extends State<ShopScreen> {
     required String price,
     required VoidCallback onAdd,
   }) {
-    bool isFavorite = favoriteItems.contains(name);
+    final isFavorite = favoriteItems.contains(name);
+
     return Container(
-      padding: EdgeInsets.all(16.0),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Food Image
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Image.network(
@@ -219,18 +352,16 @@ class _ShopScreenState extends State<ShopScreen> {
               height: 80,
               fit: BoxFit.cover,
               errorBuilder:
-                  (context, error, stackTrace) =>
+                  (_, __, ___) =>
                       Icon(Icons.fastfood, size: 80, color: Colors.orange),
             ),
           ),
           SizedBox(width: 16),
-          // Food Details
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Text(
@@ -252,23 +383,12 @@ class _ShopScreenState extends State<ShopScreen> {
                   ],
                 ),
                 SizedBox(height: 4),
-                Text(
-                  description,
-                  style: TextStyle(fontSize: 14, color: Colors.grey),
-                ),
+                Text(description, style: TextStyle(color: Colors.grey)),
                 SizedBox(height: 8),
-                Text(
-                  price,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                ),
+                Text(price, style: TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
           ),
-          // Add Button
           ElevatedButton(
             onPressed: onAdd,
             style: ElevatedButton.styleFrom(
