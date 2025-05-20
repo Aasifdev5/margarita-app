@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:margarita/main.dart';
 import 'package:margarita/screens/food_home.dart'; // Import the FoodHomeScreen
 
-class LoginScreen extends StatelessWidget {
+class RegistrationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -21,7 +21,7 @@ class LoginScreen extends StatelessWidget {
                 SizedBox(height: 10),
                 // Title
                 Text(
-                  'Iniciar Sesión',
+                  'Registro',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 28,
@@ -30,6 +30,9 @@ class LoginScreen extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: 40),
+                // Name TextField
+                _buildTextField(icon: Icons.person, hintText: 'Nombre'),
+                SizedBox(height: 16),
                 // Email TextField
                 _buildTextField(
                   icon: Icons.email,
@@ -43,8 +46,15 @@ class LoginScreen extends StatelessWidget {
                   hintText: 'Contraseña',
                   obscureText: true,
                 ),
+                SizedBox(height: 16),
+                // WhatsApp Number TextField
+                _buildTextField(
+                  icon: Icons.phone,
+                  hintText: 'Número de WhatsApp',
+                  keyboardType: TextInputType.phone,
+                ),
                 SizedBox(height: 30),
-                // Login Button
+                // Register Button
                 ElevatedButton(
                   onPressed: () {
                     Navigator.push(
@@ -60,7 +70,7 @@ class LoginScreen extends StatelessWidget {
                     ),
                   ),
                   child: Text(
-                    'Iniciar Sesión',
+                    'Registrarse',
                     style: TextStyle(
                       fontSize: 18,
                       color: Colors.white,
@@ -83,28 +93,24 @@ class LoginScreen extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Image.network(
-                        'https://developers.google.com/identity/images/g-logo.png', // Official Google "G" logo
-                        height: 24,
-                        width: 24,
-                        errorBuilder:
-                            (context, error, stackTrace) =>
-                                Icon(Icons.error, size: 24, color: Colors.grey),
+                        'https://developers.google.com/identity/images/g-logo.png',
+                        height: 20,
                       ),
                       SizedBox(width: 10),
                       Text(
-                        'Iniciar sesión con Google',
+                        'Registrarse con Google',
                         style: TextStyle(fontSize: 16, color: Colors.black),
                       ),
                     ],
                   ),
                 ),
                 SizedBox(height: 20),
-                // Register Link
+                // Sign In Link
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      '¿No tienes una cuenta? ',
+                      '¿Ya tienes una cuenta? ',
                       style: TextStyle(color: Colors.grey),
                     ),
                     GestureDetector(
@@ -112,12 +118,12 @@ class LoginScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => RegistrationScreen(),
+                            builder: (context) => LoginScreen(),
                           ),
                         );
                       },
                       child: Text(
-                        'Regístrate',
+                        'Inicia sesión',
                         style: TextStyle(
                           color: Colors.orange,
                           fontWeight: FontWeight.bold,

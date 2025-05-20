@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:carousel_slider_plus/carousel_slider_plus.dart'; // Updated import
-import 'package:margarita/screens/shop.dart'; // Import ShopScreen
-import 'package:margarita/screens/menu.dart'; // Import MenuScreen
-import 'package:margarita/screens/orderHistory.dart'; // Import OrderHistoryScreen
-import 'package:margarita/screens/favourites.dart'; // Import FavouritesScreen
-import 'package:geolocator/geolocator.dart'; // For location services
-import 'package:geocoding/geocoding.dart'; // For converting coordinates to address
-import 'package:permission_handler/permission_handler.dart'; // For handling permissions
-import 'package:url_launcher/url_launcher.dart'; // For launching WhatsApp
+import 'package:carousel_slider_plus/carousel_slider_plus.dart';
+import 'package:margarita/screens/shop.dart';
+import 'package:margarita/screens/menu.dart';
+import 'package:margarita/screens/orderHistory.dart';
+import 'package:margarita/screens/favourites.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class FoodHomeScreen extends StatefulWidget {
   @override
@@ -21,8 +21,8 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   late Animation<double> _fadeAnimation;
   TextEditingController _searchController = TextEditingController();
   bool _showSearch = false;
-  bool _hasShownLocationPopup = false; // Track if pop-up has been shown
-  String _currentAddress = '123 Main St, Cityville'; // Default address
+  bool _hasShownLocationPopup = false;
+  String _currentAddress = '123 Main St, Cityville';
 
   // List of slider items
   final List<Map<String, dynamic>> sliderItems = [
@@ -67,10 +67,10 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     },
   ];
 
-  // Define categories with their respective products
+  // Define categories with their respective products and ShopScreen category mapping
   final List<Map<String, dynamic>> categories = [
     {
-      'name': 'Italiana',
+      'shopCategory': 'Pizza', // Maps to ShopScreen category
       'products': [
         {
           'imageUrl':
@@ -80,17 +80,17 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       ],
     },
     {
-      'name': 'Japonesa',
+      'shopCategory': 'Postres', // Replaced Sushi with Postres
       'products': [
         {
           'imageUrl':
-              'https://images.unsplash.com/photo-1528731708534-816fe59f90cb',
-          'name': 'Sushi',
+              'https://images.unsplash.com/photo-1576618141411-753f2356c48c',
+          'name': 'Postres',
         },
       ],
     },
     {
-      'name': 'Americana',
+      'shopCategory': 'Hamburguesas',
       'products': [
         {
           'imageUrl':
@@ -100,7 +100,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       ],
     },
     {
-      'name': 'Mexicana',
+      'shopCategory': 'Tacos',
       'products': [
         {
           'imageUrl':
@@ -123,7 +123,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     );
     _animationController.forward();
 
-    // Show location pop-up when the screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_hasShownLocationPopup) {
         _showLocationPopup();
@@ -145,7 +144,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     });
 
     if (index == 0) {
-      // Already on FoodHomeScreen, no navigation needed
+      // Already on FoodHomeScreen
     } else if (index == 1) {
       Navigator.push(
         context,
@@ -188,10 +187,8 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         SnackBar(content: Text('Por favor, ingresa un término de búsqueda')),
       );
     }
-    // Implement search logic here
   }
 
-  // Request location permission and get the user's location
   Future<Position?> _getUserLocation() async {
     var permissionStatus = await Permission.location.request();
     if (permissionStatus.isGranted) {
@@ -214,7 +211,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     }
   }
 
-  // Convert coordinates to a readable address
   Future<String> _getAddressFromCoordinates(
     double latitude,
     double longitude,
@@ -234,7 +230,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     }
   }
 
-  // Share location via WhatsApp
   Future<void> _shareLocationViaWhatsApp(
     double latitude,
     double longitude,
@@ -244,47 +239,38 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
     String message =
         'Hola, aquí está mi ubicación para el envío:\n$address\n$googleMapsLink';
-
-    // Primary URL scheme to open WhatsApp directly
     String whatsappUrl = 'whatsapp://send?text=${Uri.encodeFull(message)}';
-
-    // Fallback URL scheme to open WhatsApp via browser
     String fallbackUrl = 'https://wa.me/?text=${Uri.encodeFull(message)}';
 
     try {
-      // Check if the primary WhatsApp URL can be launched
       if (await canLaunchUrl(Uri.parse(whatsappUrl))) {
         await launchUrl(
           Uri.parse(whatsappUrl),
-          mode: LaunchMode.externalApplication, // Ensure it opens in WhatsApp
+          mode: LaunchMode.externalApplication,
+        );
+      } else if (await canLaunchUrl(Uri.parse(fallbackUrl))) {
+        await launchUrl(
+          Uri.parse(fallbackUrl),
+          mode: LaunchMode.platformDefault,
         );
       } else {
-        // If WhatsApp isn't installed, try the fallback URL in a browser
-        if (await canLaunchUrl(Uri.parse(fallbackUrl))) {
-          await launchUrl(
-            Uri.parse(fallbackUrl),
-            mode: LaunchMode.platformDefault, // Open in browser as fallback
-          );
-        } else {
-          throw 'No se pudo abrir WhatsApp ni el navegador.';
-        }
+        throw 'No se pudo abrir WhatsApp ni el navegador.';
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Error al intentar abrir WhatsApp. Asegúrate de tener WhatsApp instalado o intenta de nuevo.',
+            'Error al intentar abrir WhatsApp. Asegúrate de tener WhatsApp instalado.',
           ),
         ),
       );
     }
   }
 
-  // Show the location pop-up
   void _showLocationPopup() {
     showDialog(
       context: context,
-      barrierDismissible: false, // Prevent dismissing by tapping outside
+      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
@@ -321,7 +307,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop(); // Close the dialog on "X"
+                Navigator.of(context).pop();
               },
               child: Text(
                 'X',
@@ -342,7 +328,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                       position.longitude,
                     );
                     setState(() {
-                      _currentAddress = address; // Update the displayed address
+                      _currentAddress = address;
                     });
                     await _shareLocationViaWhatsApp(
                       position.latitude,
@@ -357,7 +343,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                     ),
                   );
                 } finally {
-                  Navigator.of(context).pop(); // Always close the dialog
+                  Navigator.of(context).pop();
                 }
               },
               child: Text(
@@ -404,9 +390,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                   onSubmitted: (value) => _performSearch(),
                 )
                 : GestureDetector(
-                  onTap: () {
-                    _showLocationPopup();
-                  },
+                  onTap: _showLocationPopup,
                   child: Row(
                     children: [
                       Icon(Icons.location_on, color: Colors.orange, size: 24),
@@ -455,7 +439,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Slider (Promotional Banner)
                 CarouselSlider(
                   options: CarouselOptions(
                     height: 180,
@@ -469,67 +452,72 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                       sliderItems.map((item) {
                         return Builder(
                           builder: (BuildContext context) {
-                            return Container(
-                              margin: EdgeInsets.symmetric(horizontal: 5.0),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.1),
-                                    blurRadius: 10,
-                                    offset: Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Stack(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(20),
-                                    child: Image.network(
-                                      item['imageUrl'],
-                                      fit: BoxFit.cover,
-                                      width: double.infinity,
-                                      height: 180,
-                                      errorBuilder:
-                                          (context, error, stackTrace) => Icon(
-                                            Icons.local_pizza,
-                                            size: 100,
-                                            color: Colors.orange,
-                                          ),
+                            return GestureDetector(
+                              onTap: () => item['onTap'](context),
+                              child: Container(
+                                margin: EdgeInsets.symmetric(horizontal: 5.0),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 10,
+                                      offset: Offset(0, 4),
                                     ),
-                                  ),
-                                  Container(
-                                    decoration: BoxDecoration(
+                                  ],
+                                ),
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(
                                       borderRadius: BorderRadius.circular(20),
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          Colors.black.withOpacity(0.6),
-                                          Colors.transparent,
-                                        ],
-                                        begin: Alignment.bottomCenter,
-                                        end: Alignment.topCenter,
+                                      child: Image.network(
+                                        item['imageUrl'],
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        height: 180,
+                                        errorBuilder:
+                                            (context, error, stackTrace) =>
+                                                Icon(
+                                                  Icons.local_pizza,
+                                                  size: 100,
+                                                  color: Colors.orange,
+                                                ),
                                       ),
                                     ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.all(16.0),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item['title'],
-                                          style: TextStyle(
-                                            fontSize: 20,
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(20),
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Colors.black.withOpacity(0.6),
+                                            Colors.transparent,
+                                          ],
+                                          begin: Alignment.bottomCenter,
+                                          end: Alignment.topCenter,
                                         ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                    Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.end,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            item['title'],
+                                            style: TextStyle(
+                                              fontSize: 20,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             );
                           },
@@ -537,10 +525,8 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                       }).toList(),
                 ),
                 SizedBox(height: 24),
-                // Categories Section - 2 categories per row
                 Column(
                   children: [
-                    // First row: Italiana and Japonesa
                     Row(
                       children: [
                         Expanded(child: _buildCategorySection(categories[0])),
@@ -549,7 +535,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                       ],
                     ),
                     SizedBox(height: 32),
-                    // Second row: Americana and Mexicana
                     Row(
                       children: [
                         Expanded(child: _buildCategorySection(categories[2])),
@@ -585,35 +570,25 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   }
 
   Widget _buildCategorySection(Map<String, dynamic> category) {
+    // Use shopCategory for navigation to ShopScreen
+    String shopCategory = category['shopCategory'];
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ShopScreen(category: category['name']),
+            builder: (context) => ShopScreen(category: shopCategory),
           ),
         );
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            category['name'],
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-              letterSpacing: 0.5,
-            ),
-          ),
-          SizedBox(height: 16),
           Container(
             height: 180,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(
-                horizontal: 16.0,
-              ), // Add symmetric padding
+              padding: EdgeInsets.symmetric(horizontal: 16.0),
               children:
                   (category['products'] as List<Map<String, dynamic>>)
                       .asMap()
@@ -621,7 +596,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                       .map((entry) {
                         int index = entry.key;
                         Map<String, dynamic> product = entry.value;
-                        // Add right padding to all items except the last one
                         bool isLastItem =
                             index == (category['products'] as List).length - 1;
                         return Padding(
@@ -645,51 +619,44 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   Widget _buildFoodCard({required String imageUrl, required String label}) {
     return FadeTransition(
       opacity: _fadeAnimation,
-      child: GestureDetector(
-        onTap: () {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Seleccionaste $label')));
-        },
-        child: Container(
-          width: 120,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.network(
-                  imageUrl,
-                  width: 120,
-                  height: 120,
-                  fit: BoxFit.cover,
-                  errorBuilder:
-                      (context, error, stackTrace) => Container(
-                        width: 120,
-                        height: 120,
-                        color: Colors.grey[300],
-                        child: Icon(
-                          Icons.fastfood,
-                          size: 60,
-                          color: Colors.orange,
-                        ),
+      child: Container(
+        width: 120,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.network(
+                imageUrl,
+                width: 120,
+                height: 120,
+                fit: BoxFit.cover,
+                errorBuilder:
+                    (context, error, stackTrace) => Container(
+                      width: 120,
+                      height: 120,
+                      color: Colors.grey[300],
+                      child: Icon(
+                        Icons.fastfood,
+                        size: 60,
+                        color: Colors.orange,
                       ),
-                ),
+                    ),
               ),
-              SizedBox(height: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            ),
+            SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
               ),
-            ],
-          ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );

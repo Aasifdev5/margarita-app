@@ -28,7 +28,7 @@ class _SplashScreenState extends State<SplashScreen> {
     Future.delayed(Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => RegistrationScreen()),
+        MaterialPageRoute(builder: (context) => LoginScreen()),
       );
     });
   }
@@ -60,7 +60,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-class RegistrationScreen extends StatelessWidget {
+class LoginScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -79,7 +79,7 @@ class RegistrationScreen extends StatelessWidget {
                 SizedBox(height: 10),
                 // Title
                 Text(
-                  'Registro',
+                  'Iniciar Sesión',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 28,
@@ -88,9 +88,6 @@ class RegistrationScreen extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: 40),
-                // Name TextField
-                _buildTextField(icon: Icons.person, hintText: 'Nombre'),
-                SizedBox(height: 16),
                 // Email TextField
                 _buildTextField(
                   icon: Icons.email,
@@ -104,15 +101,8 @@ class RegistrationScreen extends StatelessWidget {
                   hintText: 'Contraseña',
                   obscureText: true,
                 ),
-                SizedBox(height: 16),
-                // WhatsApp Number TextField
-                _buildTextField(
-                  icon: Icons.phone,
-                  hintText: 'Número de WhatsApp',
-                  keyboardType: TextInputType.phone,
-                ),
                 SizedBox(height: 30),
-                // Register Button
+                // Login Button
                 ElevatedButton(
                   onPressed: () {
                     Navigator.push(
@@ -128,7 +118,7 @@ class RegistrationScreen extends StatelessWidget {
                     ),
                   ),
                   child: Text(
-                    'Registrarse',
+                    'Iniciar Sesión',
                     style: TextStyle(
                       fontSize: 18,
                       color: Colors.white,
@@ -151,24 +141,28 @@ class RegistrationScreen extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Image.network(
-                        'https://developers.google.com/identity/images/g-logo.png',
-                        height: 20,
+                        'https://developers.google.com/identity/images/g-logo.png', // Official Google "G" logo
+                        height: 24,
+                        width: 24,
+                        errorBuilder:
+                            (context, error, stackTrace) =>
+                                Icon(Icons.error, size: 24, color: Colors.grey),
                       ),
                       SizedBox(width: 10),
                       Text(
-                        'Registrarse con Google',
+                        'Iniciar sesión con Google',
                         style: TextStyle(fontSize: 16, color: Colors.black),
                       ),
                     ],
                   ),
                 ),
                 SizedBox(height: 20),
-                // Sign In Link
+                // Register Link
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      '¿Ya tienes una cuenta? ',
+                      '¿No tienes una cuenta? ',
                       style: TextStyle(color: Colors.grey),
                     ),
                     GestureDetector(
@@ -176,12 +170,12 @@ class RegistrationScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => LoginScreen(),
+                            builder: (context) => RegistrationScreen(),
                           ),
                         );
                       },
                       child: Text(
-                        'Inicia sesión',
+                        'Regístrate',
                         style: TextStyle(
                           color: Colors.orange,
                           fontWeight: FontWeight.bold,

@@ -30,33 +30,6 @@ class _ShopScreenState extends State<ShopScreen> {
         'price': '12,00 €',
       },
     ],
-    'Japonesa': [
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1528731708534-816fe59f90cb',
-        'name': 'Sushi',
-        'description': 'Variedad de sushi fresco',
-        'price': '15,00 €',
-      },
-    ],
-    'Americana': [
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
-        'name': 'Cheeseburger',
-        'description': 'Lleva queso, lechuga y tomate',
-        'price': '9,50 €',
-      },
-    ],
-    'Mexicana': [
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1523049673857-eb18f78959f8',
-        'name': 'Tacos',
-        'description': 'Tacos con carne y salsa',
-        'price': '8,00 €',
-      },
-    ],
     'Pizza': [
       {
         'imageUrl':
@@ -84,6 +57,53 @@ class _ShopScreenState extends State<ShopScreen> {
         'price': '8,00 €',
       },
     ],
+    'Snacks': [
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1626700051175-9f77c845a7e0',
+        'name': 'Papas Fritas',
+        'description': 'Papas crujientes con salsa',
+        'price': '4,50 €',
+      },
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1629121520897-3472a6e4b1f0',
+        'name': 'Nachos',
+        'description': 'Nachos con queso fundido y jalapeños',
+        'price': '6,00 €',
+      },
+    ],
+    'Bebidas': [
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b',
+        'name': 'Refresco',
+        'description': 'Cola, limonada o naranja',
+        'price': '2,50 €',
+      },
+      {
+        'imageUrl': 'https://images.unsplash.com/photo-1544140708-514c08d36e72',
+        'name': 'Agua Mineral',
+        'description': 'Agua con o sin gas',
+        'price': '1,50 €',
+      },
+    ],
+    'Postres': [
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1576618141411-753f2356c48c',
+        'name': 'Tarta de Queso',
+        'description': 'Tarta cremosa con base de galleta',
+        'price': '5,00 €',
+      },
+      {
+        'imageUrl':
+            'https://images.unsplash.com/photo-1586789070921-31a080e3b4f0',
+        'name': 'Helado',
+        'description': 'Helado de vainilla o chocolate',
+        'price': '3,50 €',
+      },
+    ],
   };
 
   @override
@@ -100,7 +120,7 @@ class _ShopScreenState extends State<ShopScreen> {
       );
 
       if (existing.isNotEmpty) {
-        existing['quantity'] += 1;
+        existing['quantity'] = (existing['quantity'] as int? ?? 0) + 1;
       } else {
         cartItems.add({...item, 'quantity': 1});
       }
@@ -147,30 +167,91 @@ class _ShopScreenState extends State<ShopScreen> {
     );
   }
 
-  List<Map<String, dynamic>> _getFilteredItems() {
-    if (widget.category.isEmpty) {
-      final seen = <String>{};
-      return categoryItems.values.expand((items) => items).where((item) {
-        final name = item['name'];
-        if (seen.contains(name)) return false;
-        seen.add(name);
-        return true;
-      }).toList();
-    } else {
-      return categoryItems[widget.category] ?? [];
+  List<Map<String, dynamic>> _getFilteredItems(String tabCategory) {
+    print('Filtering for tab: $tabCategory, category: ${widget.category}');
+
+    // Validate category
+    if (widget.category.isNotEmpty &&
+        !categoryItems.containsKey(widget.category)) {
+      print('Invalid category: ${widget.category}');
+      return [];
     }
+
+    // If a specific category is passed, show only that category's items
+    if (widget.category.isNotEmpty) {
+      final items = categoryItems[widget.category] ?? [];
+      final validItems = items.where(_isValidItem).toList();
+      print('Specific category items for ${widget.category}: $validItems');
+      return validItems;
+    }
+
+    // Map tabs to their respective categories
+    final tabToCategory = {
+      'Clásicos': ['Italiana', 'Pizza', 'Hamburguesas', 'Tacos'],
+      'Snacks': ['Snacks'],
+      'Bebidas': ['Bebidas'],
+      'Postres': ['Postres'],
+    };
+
+    // Get items for the current tab's category
+    final categories = tabToCategory[tabCategory] ?? [];
+    final seen = <String>{};
+    final items =
+        categoryItems.entries
+            .where((entry) => categories.contains(entry.key))
+            .expand((entry) => entry.value)
+            .where((item) {
+              if (!_isValidItem(item)) {
+                print('Invalid item found: $item');
+                return false;
+              }
+              final name = item['name'] as String;
+              if (seen.contains(name)) return false;
+              seen.add(name);
+              return true;
+            })
+            .toList();
+    print('Tab $tabCategory items: $items');
+    return items;
+  }
+
+  bool _isValidItem(Map<String, dynamic> item) {
+    final isValid =
+        item['imageUrl'] is String &&
+        item['name'] is String &&
+        item['description'] is String &&
+        item['price'] is String &&
+        item['imageUrl']?.isNotEmpty == true &&
+        item['name']?.isNotEmpty == true &&
+        item['description']?.isNotEmpty == true &&
+        item['price']?.isNotEmpty == true;
+    if (!isValid) {
+      print('Invalid item: $item');
+    }
+    return isValid;
   }
 
   @override
   Widget build(BuildContext context) {
-    final filteredItems = _getFilteredItems();
+    final tabIndex =
+        {
+          'Italiana': 0,
+          'Pizza': 0,
+          'Hamburguesas': 0,
+          'Tacos': 0,
+          'Snacks': 1,
+          'Bebidas': 2,
+          'Postres': 3,
+        }[widget.category] ??
+        0;
 
     return DefaultTabController(
       length: 4,
+      initialIndex: tabIndex,
       child: Scaffold(
         backgroundColor: Colors.grey[100],
         appBar: PreferredSize(
-          preferredSize: Size.fromHeight(100.0),
+          preferredSize: const Size.fromHeight(100.0),
           child: AppBar(
             backgroundColor: Colors.white,
             elevation: 2,
@@ -183,7 +264,7 @@ class _ShopScreenState extends State<ShopScreen> {
                         hintText: 'Buscar comida...',
                         border: InputBorder.none,
                         suffixIcon: IconButton(
-                          icon: Icon(Icons.close),
+                          icon: const Icon(Icons.close),
                           onPressed: _toggleSearch,
                         ),
                       ),
@@ -191,7 +272,7 @@ class _ShopScreenState extends State<ShopScreen> {
                     )
                     : Text(
                       widget.category.isEmpty ? 'Tienda' : widget.category,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: Colors.black,
@@ -202,20 +283,20 @@ class _ShopScreenState extends State<ShopScreen> {
                 _showSearch
                     ? [
                       IconButton(
-                        icon: Icon(Icons.search, color: Colors.orange),
+                        icon: const Icon(Icons.search, color: Colors.orange),
                         onPressed: _performSearch,
                       ),
                     ]
                     : [
                       IconButton(
-                        icon: Icon(Icons.search, color: Colors.orange),
+                        icon: const Icon(Icons.search, color: Colors.orange),
                         onPressed: _toggleSearch,
                       ),
                       Stack(
                         alignment: Alignment.center,
                         children: [
                           IconButton(
-                            icon: Icon(
+                            icon: const Icon(
                               Icons.shopping_cart,
                               color: Colors.orange,
                             ),
@@ -241,7 +322,7 @@ class _ShopScreenState extends State<ShopScreen> {
                                 backgroundColor: Colors.red,
                                 child: Text(
                                   '${cartItems.length}',
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 10,
                                     color: Colors.white,
                                   ),
@@ -251,7 +332,7 @@ class _ShopScreenState extends State<ShopScreen> {
                         ],
                       ),
                     ],
-            bottom: TabBar(
+            bottom: const TabBar(
               labelColor: Colors.orange,
               unselectedLabelColor: Colors.grey,
               indicatorColor: Colors.orange,
@@ -266,27 +347,10 @@ class _ShopScreenState extends State<ShopScreen> {
         ),
         body: TabBarView(
           children: [
-            ListView(
-              padding: EdgeInsets.all(16.0),
-              children:
-                  filteredItems
-                      .map(
-                        (item) => Padding(
-                          padding: const EdgeInsets.only(bottom: 16.0),
-                          child: _buildFoodItem(
-                            imageUrl: item['imageUrl'],
-                            name: item['name'],
-                            description: item['description'],
-                            price: item['price'],
-                            onAdd: () => _addToCart(item),
-                          ),
-                        ),
-                      )
-                      .toList(),
-            ),
-            Center(child: Text('Snacks Tab')),
-            Center(child: Text('Bebidas Tab')),
-            Center(child: Text('Postres Tab')),
+            _buildTabContent('Clásicos'),
+            _buildTabContent('Snacks'),
+            _buildTabContent('Bebidas'),
+            _buildTabContent('Postres'),
           ],
         ),
         bottomNavigationBar: BottomNavigationBar(
@@ -327,6 +391,42 @@ class _ShopScreenState extends State<ShopScreen> {
     );
   }
 
+  Widget _buildTabContent(String tabCategory) {
+    final filteredItems = _getFilteredItems(tabCategory);
+    if (filteredItems.isEmpty) {
+      return Center(
+        child: Text(
+          'No hay productos disponibles para $tabCategory${widget.category.isNotEmpty ? ' (${widget.category})' : ''}',
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16.0),
+      children:
+          filteredItems.map((item) {
+            // Safe access with fallbacks
+            final imageUrl = item['imageUrl'] as String? ?? '';
+            final name = item['name'] as String? ?? 'Unknown';
+            final description = item['description'] as String? ?? '';
+            final price = item['price'] as String? ?? '0,00 €';
+            if (!_isValidItem(item)) {
+              print('Skipping invalid item in build: $item');
+              return const SizedBox.shrink();
+            }
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: _buildFoodItem(
+                imageUrl: imageUrl,
+                name: name,
+                description: description,
+                price: price,
+                onAdd: () => _addToCart(item),
+              ),
+            );
+          }).toList(),
+    );
+  }
+
   Widget _buildFoodItem({
     required String imageUrl,
     required String name,
@@ -337,7 +437,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final isFavorite = favoriteItems.contains(name);
 
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -347,16 +447,19 @@ class _ShopScreenState extends State<ShopScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Image.network(
-              imageUrl,
+              imageUrl.isEmpty ? 'https://via.placeholder.com/80' : imageUrl,
               width: 80,
               height: 80,
               fit: BoxFit.cover,
               errorBuilder:
-                  (_, __, ___) =>
-                      Icon(Icons.fastfood, size: 80, color: Colors.orange),
+                  (_, __, ___) => const Icon(
+                    Icons.fastfood,
+                    size: 80,
+                    color: Colors.orange,
+                  ),
             ),
           ),
-          SizedBox(width: 16),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -366,7 +469,7 @@ class _ShopScreenState extends State<ShopScreen> {
                     Expanded(
                       child: Text(
                         name,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
@@ -382,10 +485,13 @@ class _ShopScreenState extends State<ShopScreen> {
                     ),
                   ],
                 ),
-                SizedBox(height: 4),
-                Text(description, style: TextStyle(color: Colors.grey)),
-                SizedBox(height: 8),
-                Text(price, style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(description, style: const TextStyle(color: Colors.grey)),
+                const SizedBox(height: 8),
+                Text(
+                  price,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               ],
             ),
           ),
@@ -397,7 +503,7 @@ class _ShopScreenState extends State<ShopScreen> {
                 borderRadius: BorderRadius.circular(20),
               ),
             ),
-            child: Text('Agregar', style: TextStyle(color: Colors.white)),
+            child: const Text('Agregar', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
