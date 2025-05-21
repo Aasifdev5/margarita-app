@@ -155,7 +155,8 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                 String imageUrl = '$baseUrl/$imagePath';
                 print('Category Image URL: $imageUrl');
                 return {
-                  'shopCategory': category['name'],
+                  'category_id': category['id'].toString(), // Store category_id
+                  'name': category['name'], // Store name for display
                   'products': [
                     {'imageUrl': imageUrl, 'name': category['name']},
                   ],
@@ -679,13 +680,14 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   }
 
   Widget _buildCategorySection(Map<String, dynamic> category) {
-    String shopCategory = category['shopCategory'];
+    String categoryId = category['category_id'];
+    String categoryName = category['name'];
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ShopScreen(category: shopCategory),
+            builder: (context) => ShopScreen(category: categoryId),
           ),
         );
       },
