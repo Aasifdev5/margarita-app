@@ -2,140 +2,41 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'package:margarita/screens/food_home.dart'; // Ensure this path is correct
-import 'package:margarita/screens/registration_screen.dart'; // Updated import
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:margarita/blocs/product_bloc.dart';
+import 'package:margarita/screens/food_home.dart';
+import 'package:margarita/main.dart'; // Import main.dart for LoginScreen
 
-import 'blocs/product_event.dart';
-import 'package:margarita/blocs/product_state.dart';
-
-void main() {
-  runApp(
-    BlocProvider(
-      create: (context) => ProductBloc()..add(FetchProducts()),
-      child: const MyApp(),
-    ),
-  );
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class RegistrationScreen extends StatefulWidget {
+  const RegistrationScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: const SplashScreen(),
-    );
-  }
+  _RegistrationScreenState createState() => _RegistrationScreenState();
 }
 
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
-
-  @override
-  _SplashScreenState createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen> {
-  @override
-  void initState() {
-    super.initState();
-    _checkAuthStatus();
-  }
-
-  Future<void> _checkAuthStatus() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-
-      if (token != null) {
-        final response = await http.get(
-          Uri.parse(
-            'http://10.0.2.2:8000/api/user',
-          ), // Use 10.0.2.2 for Android emulator
-          headers: {'Authorization': 'Bearer $token'},
-        );
-
-        if (response.statusCode == 200) {
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => FoodHomeScreen()),
-            );
-          }
-        } else {
-          await prefs.remove('auth_token');
-          if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const LoginScreen()),
-            );
-          }
-        }
-      } else {
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const LoginScreen()),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Image.asset('assets/images/logo.png', width: 250, height: 250),
-            const SizedBox(height: 10),
-            const Text(
-              'Margarita',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.orange,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
-
-  @override
-  _LoginScreenState createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
+class _RegistrationScreenState extends State<RegistrationScreen> {
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  final _whatsappController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
 
-  Future<void> _login() async {
+  Future<void> _register() async {
     // Validate required fields
-    if (_emailController.text.trim().isEmpty ||
-        _passwordController.text.isEmpty) {
+    if (_nameController.text.trim().isEmpty ||
+        _emailController.text.trim().isEmpty ||
+        _passwordController.text.isEmpty ||
+        _confirmPasswordController.text.isEmpty ||
+        _whatsappController.text.trim().isEmpty) {
       setState(() {
         _errorMessage = 'Todos los campos son obligatorios';
+      });
+      return;
+    }
+
+    if (_passwordController.text != _confirmPasswordController.text) {
+      setState(() {
+        _errorMessage = 'Las contraseñas no coinciden';
       });
       return;
     }
@@ -147,28 +48,26 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse(
-          'http://10.0.2.2:8000/api/login',
-        ), // Use 10.0.2.2 for Android emulator
+        Uri.parse('http://10.0.2.2:8000/api/register'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
+          'name': _nameController.text.trim(),
           'email': _emailController.text.trim(),
           'password': _passwordController.text,
+          'password_confirmation': _confirmPasswordController.text,
+          'whatsapp_number': _whatsappController.text.trim(),
         }),
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 201) {
         final data = json.decode(response.body);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('auth_token', data['token']);
         await prefs.setString('user_name', data['user']['name']);
-        // Optionally store WhatsApp number if returned
-        if (data['user']['whatsapp_number'] != null) {
-          await prefs.setString(
-            'whatsapp_number',
-            data['user']['whatsapp_number'],
-          );
-        }
+        await prefs.setString(
+          'whatsapp_number',
+          data['user']['whatsapp_number'] ?? '',
+        );
 
         if (mounted) {
           Navigator.pushReplacement(
@@ -179,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         final data = json.decode(response.body);
         setState(() {
-          _errorMessage = data['message'] ?? 'Login failed';
+          _errorMessage = data['message'] ?? 'Registration failed';
         });
       }
     } catch (e) {
@@ -195,8 +94,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _whatsappController.dispose();
     super.dispose();
   }
 
@@ -215,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Image.asset('assets/images/logo.png', width: 140, height: 140),
                 const SizedBox(height: 10),
                 const Text(
-                  'Iniciar Sesión',
+                  'Registrarse',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 28,
@@ -224,6 +126,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 40),
+                _buildTextField(
+                  controller: _nameController,
+                  icon: Icons.person,
+                  hintText: 'Nombre *',
+                ),
+                const SizedBox(height: 16),
                 _buildTextField(
                   controller: _emailController,
                   icon: Icons.email,
@@ -237,6 +145,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   hintText: 'Contraseña *',
                   obscureText: true,
                 ),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _confirmPasswordController,
+                  icon: Icons.lock,
+                  hintText: 'Confirmar Contraseña *',
+                  obscureText: true,
+                ),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _whatsappController,
+                  icon: Icons.phone,
+                  hintText: 'Número de WhatsApp *',
+                  keyboardType: TextInputType.phone,
+                ),
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 10),
                   Text(
@@ -248,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 _isLoading
                     ? const CircularProgressIndicator()
                     : ElevatedButton(
-                      onPressed: _login,
+                      onPressed: _register,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         minimumSize: const Size(double.infinity, 50),
@@ -257,7 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       child: const Text(
-                        'Iniciar Sesión',
+                        'Registrarse',
                         style: TextStyle(
                           fontSize: 18,
                           color: Colors.white,
@@ -291,7 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(width: 10),
                       const Text(
-                        'Iniciar sesión con Google',
+                        'Registrarse con Google',
                         style: TextStyle(fontSize: 16, color: Colors.black),
                       ),
                     ],
@@ -302,7 +224,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Text(
-                      '¿No tienes una cuenta? ',
+                      '¿Ya tienes una cuenta? ',
                       style: TextStyle(color: Colors.grey),
                     ),
                     GestureDetector(
@@ -310,12 +232,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const RegistrationScreen(),
+                            builder: (context) => LoginScreen(),
                           ),
                         );
                       },
                       child: const Text(
-                        'Regístrate',
+                        'Inicia Sesión',
                         style: TextStyle(
                           color: Colors.orange,
                           fontWeight: FontWeight.bold,

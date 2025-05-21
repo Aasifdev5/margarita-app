@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider_plus/carousel_slider_plus.dart';
 import 'package:margarita/screens/shop.dart';
 import 'package:margarita/screens/menu.dart';
@@ -8,6 +9,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class FoodHomeScreen extends StatefulWidget {
   @override
@@ -23,93 +26,13 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   bool _showSearch = false;
   bool _hasShownLocationPopup = false;
   String _currentAddress = '123 Main St, Cityville';
-
-  // List of slider items
-  final List<Map<String, dynamic>> sliderItems = [
-    {
-      'imageUrl':
-          'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
-      'title': '¡Pizza con 30% de descuento!',
-      'onTap': (BuildContext context) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ShopScreen(category: 'Pizza'),
-          ),
-        );
-      },
-    },
-    {
-      'imageUrl':
-          'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
-      'title': '¡Hamburguesas irresistibles!',
-      'onTap': (BuildContext context) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ShopScreen(category: 'Hamburguesas'),
-          ),
-        );
-      },
-    },
-    {
-      'imageUrl':
-          'https://images.unsplash.com/photo-1523049673857-eb18f78959f8',
-      'title': '¡Tacos al mejor precio!',
-      'onTap': (BuildContext context) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ShopScreen(category: 'Tacos'),
-          ),
-        );
-      },
-    },
-  ];
-
-  // Define categories with their respective products and ShopScreen category mapping
-  final List<Map<String, dynamic>> categories = [
-    {
-      'shopCategory': 'Pizza', // Maps to ShopScreen category
-      'products': [
-        {
-          'imageUrl':
-              'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
-          'name': 'Pizza',
-        },
-      ],
-    },
-    {
-      'shopCategory': 'Postres', // Replaced Sushi with Postres
-      'products': [
-        {
-          'imageUrl':
-              'https://images.unsplash.com/photo-1576618141411-753f2356c48c',
-          'name': 'Postres',
-        },
-      ],
-    },
-    {
-      'shopCategory': 'Hamburguesas',
-      'products': [
-        {
-          'imageUrl':
-              'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
-          'name': 'Burger',
-        },
-      ],
-    },
-    {
-      'shopCategory': 'Tacos',
-      'products': [
-        {
-          'imageUrl':
-              'https://images.unsplash.com/photo-1523049673857-eb18f78959f8',
-          'name': 'Tacos',
-        },
-      ],
-    },
-  ];
+  bool _isLoading = true;
+  String? _errorMessage;
+  List<Map<String, dynamic>> categories = [];
+  List<Map<String, dynamic>> sliderItems = [];
+  bool _isSliderLoading = true;
+  String? _sliderErrorMessage;
+  final String baseUrl = 'http://10.0.2.2:8000'; // Base URL for the emulator
 
   @override
   void initState() {
@@ -122,6 +45,10 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _animationController.forward();
+
+    // Fetch categories and sliders from API
+    _fetchCategories();
+    _fetchSliders();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_hasShownLocationPopup) {
@@ -136,6 +63,119 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     _animationController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchSliders() async {
+    setState(() {
+      _isSliderLoading = true;
+      _sliderErrorMessage = null;
+    });
+
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/sliders'));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        if (responseData['status'] == 'success') {
+          final List<dynamic> data = responseData['data'];
+          setState(() {
+            sliderItems =
+                data.map((slider) {
+                  // Check if the image is a full URL or a relative path
+                  String imageUrl;
+                  if (slider['image'].startsWith('http')) {
+                    // If it's a full URL, replace 127.0.0.1 with 10.0.2.2 for emulator access
+                    imageUrl = slider['image'].replaceFirst(
+                      'http://127.0.0.1:8000',
+                      baseUrl,
+                    );
+                  } else {
+                    // If it's a relative path, prepend the base URL
+                    imageUrl = '$baseUrl/${slider['image']}';
+                  }
+                  print('Slider Image URL: $imageUrl');
+                  return {
+                    'imageUrl': imageUrl,
+                    'title': slider['title1'],
+                    'onTap': (BuildContext context) {
+                      final categoryId = slider['link'].split('/').last;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (context) => ShopScreen(category: categoryId),
+                        ),
+                      );
+                    },
+                  };
+                }).toList();
+            _isSliderLoading = false;
+          });
+        } else {
+          setState(() {
+            _sliderErrorMessage =
+                'Error al cargar los sliders: ${responseData['message']}';
+            _isSliderLoading = false;
+          });
+        }
+      } else {
+        setState(() {
+          _sliderErrorMessage =
+              'Error al cargar los sliders: ${response.statusCode}';
+          _isSliderLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _sliderErrorMessage = 'Error de conexión: $e';
+        _isSliderLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchCategories() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/categories'));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        setState(() {
+          categories =
+              data.map((category) {
+                String imagePath = category['image'];
+                if (imagePath.contains('storage/')) {
+                  print('Warning: Image path contains /storage/: $imagePath');
+                  imagePath = imagePath.replaceFirst('storage/', '');
+                }
+                String imageUrl = '$baseUrl/$imagePath';
+                print('Category Image URL: $imageUrl');
+                return {
+                  'shopCategory': category['name'],
+                  'products': [
+                    {'imageUrl': imageUrl, 'name': category['name']},
+                  ],
+                };
+              }).toList();
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _errorMessage =
+              'Error al cargar las categorías: ${response.statusCode}';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error de conexión: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   void _onItemTapped(int index) {
@@ -158,7 +198,9 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     } else if (index == 3) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => FavouritesScreen()),
+        MaterialPageRoute(
+          builder: (context) => FavouritesScreen(favorites: []),
+        ),
       );
     } else if (index == 4) {
       Navigator.push(
@@ -439,111 +481,178 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CarouselSlider(
-                  options: CarouselOptions(
-                    height: 180,
-                    autoPlay: true,
-                    autoPlayInterval: Duration(seconds: 3),
-                    enlargeCenterPage: true,
-                    viewportFraction: 0.9,
-                    aspectRatio: 2.0,
-                  ),
-                  items:
-                      sliderItems.map((item) {
-                        return Builder(
-                          builder: (BuildContext context) {
-                            return GestureDetector(
-                              onTap: () => item['onTap'](context),
-                              child: Container(
-                                margin: EdgeInsets.symmetric(horizontal: 5.0),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(20),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.1),
-                                      blurRadius: 10,
-                                      offset: Offset(0, 4),
+                _isSliderLoading
+                    ? Center(child: CircularProgressIndicator())
+                    : _sliderErrorMessage != null
+                    ? Center(
+                      child: Column(
+                        children: [
+                          Text(
+                            _sliderErrorMessage!,
+                            style: TextStyle(color: Colors.red),
+                          ),
+                          SizedBox(height: 10),
+                          ElevatedButton(
+                            onPressed: _fetchSliders,
+                            child: Text('Reintentar'),
+                          ),
+                        ],
+                      ),
+                    )
+                    : sliderItems.isEmpty
+                    ? Center(child: Text('No se encontraron sliders'))
+                    : CarouselSlider(
+                      options: CarouselOptions(
+                        height: 180,
+                        autoPlay: true,
+                        autoPlayInterval: Duration(seconds: 3),
+                        enlargeCenterPage: true,
+                        viewportFraction: 0.9,
+                        aspectRatio: 2.0,
+                      ),
+                      items:
+                          sliderItems.map((item) {
+                            return Builder(
+                              builder: (BuildContext context) {
+                                return GestureDetector(
+                                  onTap: () => item['onTap'](context),
+                                  child: Container(
+                                    margin: EdgeInsets.symmetric(
+                                      horizontal: 5.0,
                                     ),
-                                  ],
-                                ),
-                                child: Stack(
-                                  children: [
-                                    ClipRRect(
+                                    decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(20),
-                                      child: Image.network(
-                                        item['imageUrl'],
-                                        fit: BoxFit.cover,
-                                        width: double.infinity,
-                                        height: 180,
-                                        errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                Icon(
-                                                  Icons.local_pizza,
-                                                  size: 100,
-                                                  color: Colors.orange,
-                                                ),
-                                      ),
-                                    ),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(20),
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            Colors.black.withOpacity(0.6),
-                                            Colors.transparent,
-                                          ],
-                                          begin: Alignment.bottomCenter,
-                                          end: Alignment.topCenter,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.1),
+                                          blurRadius: 10,
+                                          offset: Offset(0, 4),
                                         ),
-                                      ),
+                                      ],
                                     ),
-                                    Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.end,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            item['title'],
-                                            style: TextStyle(
-                                              fontSize: 20,
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
+                                    child: Stack(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          child: CachedNetworkImage(
+                                            imageUrl: item['imageUrl'],
+                                            fit: BoxFit.cover,
+                                            width: double.infinity,
+                                            height: 180,
+                                            placeholder:
+                                                (context, url) => Center(
+                                                  child:
+                                                      CircularProgressIndicator(),
+                                                ),
+                                            errorWidget: (context, url, error) {
+                                              print(
+                                                'Slider image loading error for $url: $error',
+                                              );
+                                              return Icon(
+                                                Icons.local_pizza,
+                                                size: 100,
+                                                color: Colors.orange,
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                Colors.black.withOpacity(0.6),
+                                                Colors.transparent,
+                                              ],
+                                              begin: Alignment.bottomCenter,
+                                              end: Alignment.topCenter,
                                             ),
                                           ),
-                                        ],
-                                      ),
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.all(16.0),
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.end,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                item['title'],
+                                                style: TextStyle(
+                                                  fontSize: 20,
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              ),
+                                  ),
+                                );
+                              },
                             );
-                          },
-                        );
-                      }).toList(),
-                ),
+                          }).toList(),
+                    ),
                 SizedBox(height: 24),
-                Column(
-                  children: [
-                    Row(
+                _isLoading
+                    ? Center(child: CircularProgressIndicator())
+                    : _errorMessage != null
+                    ? Center(
+                      child: Column(
+                        children: [
+                          Text(
+                            _errorMessage!,
+                            style: TextStyle(color: Colors.red),
+                          ),
+                          SizedBox(height: 10),
+                          ElevatedButton(
+                            onPressed: _fetchCategories,
+                            child: Text('Reintentar'),
+                          ),
+                        ],
+                      ),
+                    )
+                    : categories.isEmpty
+                    ? Center(child: Text('No se encontraron categorías'))
+                    : Column(
                       children: [
-                        Expanded(child: _buildCategorySection(categories[0])),
-                        SizedBox(width: 16),
-                        Expanded(child: _buildCategorySection(categories[1])),
+                        Row(
+                          children: [
+                            if (categories.length > 0)
+                              Expanded(
+                                child: _buildCategorySection(categories[0]),
+                              ),
+                            if (categories.length > 1) SizedBox(width: 16),
+                            if (categories.length > 1)
+                              Expanded(
+                                child: _buildCategorySection(categories[1]),
+                              ),
+                          ],
+                        ),
+                        if (categories.length > 2) SizedBox(height: 32),
+                        if (categories.length > 2)
+                          Row(
+                            children: [
+                              if (categories.length > 2)
+                                Expanded(
+                                  child: _buildCategorySection(categories[2]),
+                                ),
+                              if (categories.length > 3) SizedBox(width: 16),
+                              if (categories.length > 3)
+                                Expanded(
+                                  child: _buildCategorySection(categories[3]),
+                                ),
+                            ],
+                          ),
                       ],
                     ),
-                    SizedBox(height: 32),
-                    Row(
-                      children: [
-                        Expanded(child: _buildCategorySection(categories[2])),
-                        SizedBox(width: 16),
-                        Expanded(child: _buildCategorySection(categories[3])),
-                      ],
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
@@ -570,7 +679,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   }
 
   Widget _buildCategorySection(Map<String, dynamic> category) {
-    // Use shopCategory for navigation to ShopScreen
     String shopCategory = category['shopCategory'];
     return GestureDetector(
       onTap: () {
@@ -626,22 +734,23 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                imageUrl,
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
                 width: 120,
                 height: 120,
                 fit: BoxFit.cover,
-                errorBuilder:
-                    (context, error, stackTrace) => Container(
-                      width: 120,
-                      height: 120,
-                      color: Colors.grey[300],
-                      child: Icon(
-                        Icons.fastfood,
-                        size: 60,
-                        color: Colors.orange,
-                      ),
-                    ),
+                placeholder:
+                    (context, url) =>
+                        Center(child: CircularProgressIndicator()),
+                errorWidget: (context, url, error) {
+                  print('Category image loading error for $url: $error');
+                  return Container(
+                    width: 120,
+                    height: 120,
+                    color: Colors.grey[300],
+                    child: Icon(Icons.fastfood, size: 60, color: Colors.orange),
+                  );
+                },
               ),
             ),
             SizedBox(height: 8),

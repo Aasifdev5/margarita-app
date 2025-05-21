@@ -1,38 +1,103 @@
 import 'package:flutter/material.dart';
-import 'package:margarita/screens/profile.dart'; // Import ProfileScreen
-import 'package:margarita/screens/address.dart'; // Import AddressScreen
-import 'package:margarita/screens/favourites.dart'; // Import FavouritesScreen
-import 'package:margarita/screens/food_home.dart'; // Import FoodHomeScreen
-import 'package:margarita/screens/shop.dart'; // Import ShopScreen
-import 'package:margarita/screens/orderHistory.dart'; // Import OrderHistoryScreen
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:margarita/screens/profile.dart';
+import 'package:margarita/screens/address.dart';
+import 'package:margarita/screens/favourites.dart';
+import 'package:margarita/screens/food_home.dart';
+import 'package:margarita/screens/shop.dart';
+import 'package:margarita/screens/orderHistory.dart';
+import 'package:margarita/main.dart'; // Import LoginScreen
 
-class MenuScreen extends StatelessWidget {
+class MenuScreen extends StatefulWidget {
+  @override
+  _MenuScreenState createState() => _MenuScreenState();
+}
+
+class _MenuScreenState extends State<MenuScreen> {
+  late NavigatorState _navigator;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Save a reference to the NavigatorState
+    _navigator = Navigator.of(context);
+  }
+
+  // Function to perform logout API call and clear preferences
+  Future<void> _logout() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token != null) {
+        final response = await http.post(
+          Uri.parse('http://10.0.2.2:8000/api/logout'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        );
+
+        if (response.statusCode != 200) {
+          // Log error but proceed with local cleanup
+          print('Logout API failed: ${response.body}');
+        }
+      }
+
+      // Clear all stored preferences
+      await prefs.remove('auth_token');
+      await prefs.remove('user_name');
+      await prefs.remove('whatsapp_number');
+
+      // Navigate to LoginScreen and clear navigation stack
+      if (mounted) {
+        _navigator.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      print('Logout error: $e');
+      // Clear preferences and navigate even if API call fails
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('auth_token');
+      await prefs.remove('user_name');
+      await prefs.remove('whatsapp_number');
+
+      if (mounted) {
+        _navigator.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    }
+  }
+
   // Function to show logout confirmation dialog
-  void _showLogoutDialog(BuildContext context) {
+  void _showLogoutDialog() {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Confirmar Cierre de Sesión'),
-          content: Text('¿Estás seguro de que quieres cerrar sesión?'),
+          title: const Text('Confirmar Cierre de Sesión'),
+          content: const Text('¿Estás seguro de que quieres cerrar sesión?'),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop(); // Close the dialog
               },
-              child: Text('Cancelar', style: TextStyle(color: Colors.grey)),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey),
+              ),
             ),
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop(); // Close the dialog
-                // Perform logout and navigate to FoodHomeScreen
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => FoodHomeScreen()),
-                  (route) => false, // Clear navigation stack
-                );
+                _logout(); // Perform logout
               },
-              child: Text(
+              child: const Text(
                 'Cerrar Sesión',
                 style: TextStyle(color: Colors.orange),
               ),
@@ -50,7 +115,7 @@ class MenuScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.grey[100],
         elevation: 0,
-        title: Text(
+        title: const Text(
           'Menú',
           style: TextStyle(
             fontSize: 24,
@@ -90,16 +155,16 @@ class MenuScreen extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => FavouritesScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => FavouritesScreen(favorites: []),
+                  ),
                 );
               },
             ),
             _buildMenuItem(
               icon: Icons.logout,
               title: 'Cerrar Sesión',
-              onTap: () {
-                _showLogoutDialog(context); // Show confirmation dialog
-              },
+              onTap: _showLogoutDialog,
             ),
           ],
         ),
@@ -118,7 +183,9 @@ class MenuScreen extends StatelessWidget {
           } else if (index == 1) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => ShopScreen(category: '')),
+              MaterialPageRoute(
+                builder: (context) => const ShopScreen(category: ''),
+              ),
             );
           } else if (index == 2) {
             Navigator.pushReplacement(
@@ -128,11 +195,12 @@ class MenuScreen extends StatelessWidget {
           } else if (index == 3) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => FavouritesScreen()),
+              MaterialPageRoute(
+                builder: (context) => FavouritesScreen(favorites: []),
+              ),
             );
-          } else if (index == 4) {
-            // Already on MenuScreen, no navigation needed
           }
+          // Index 4 is MenuScreen, no navigation needed
         },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
@@ -155,13 +223,13 @@ class MenuScreen extends StatelessWidget {
   }) {
     return Card(
       color: Colors.white,
-      margin: EdgeInsets.only(bottom: 16.0),
+      margin: const EdgeInsets.only(bottom: 16.0),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ListTile(
         leading: Icon(icon, color: Colors.orange, size: 30),
         title: Text(
           title,
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         onTap: onTap,
       ),

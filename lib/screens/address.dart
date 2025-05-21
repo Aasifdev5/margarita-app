@@ -433,7 +433,9 @@ class _AddressScreenState extends State<AddressScreen> {
           } else if (index == 3) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => FavouritesScreen()),
+              MaterialPageRoute(
+                builder: (context) => FavouritesScreen(favorites: []),
+              ),
             );
           } else if (index == 4) {
             Navigator.pushReplacement(

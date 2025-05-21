@@ -1,285 +1,264 @@
 import 'package:flutter/material.dart';
-import 'package:margarita/screens/checkout.dart';
-import 'package:margarita/screens/food_home.dart';
-import 'package:margarita/screens/menu.dart';
-import 'package:margarita/screens/shop.dart';
-import 'package:margarita/screens/orderHistory.dart';
-import 'package:margarita/screens/favourites.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class CartScreen extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
 
-  CartScreen({required this.cartItems});
+  const CartScreen({Key? key, required this.cartItems}) : super(key: key);
 
   @override
-  _CartScreenState createState() => _CartScreenState();
+  State<CartScreen> createState() => _CartScreenState();
 }
 
 class _CartScreenState extends State<CartScreen> {
-  late List<Map<String, dynamic>> _cartItems;
+  late List<Map<String, dynamic>> _items;
+  double _total = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _cartItems = widget.cartItems;
+    _items = List.from(widget.cartItems);
+    _calculateTotal();
+  }
+
+  void _calculateTotal() {
+    _total = 0.0;
+    for (var item in _items) {
+      final price = item['price'] as String;
+      final quantity = item['quantity'] as int;
+      final priceValue = double.tryParse(price.replaceAll('\$', '')) ?? 0.0;
+      _total += priceValue * quantity;
+    }
   }
 
   void _updateQuantity(int index, int change) {
     setState(() {
-      int newQuantity = _cartItems[index]['quantity'] + change;
-      if (newQuantity >= 1) {
-        _cartItems[index]['quantity'] = newQuantity;
+      final newQuantity = (_items[index]['quantity'] as int) + change;
+      if (newQuantity <= 0) {
+        _items.removeAt(index);
+      } else {
+        _items[index]['quantity'] = newQuantity;
       }
-    });
-  }
-
-  void _removeItem(int index) {
-    setState(() {
-      _cartItems.removeAt(index);
-    });
-  }
-
-  double _calculateTotal() {
-    return _cartItems.fold(0.0, (sum, item) {
-      double price = double.parse(
-        item['price'].replaceAll(' €', '').replaceAll(',', '.'),
-      );
-      return sum + (price * item['quantity']);
+      _calculateTotal();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        backgroundColor: Colors.orange,
-        title: Text(
-          'Carrito',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
+        backgroundColor: Colors.white,
+        elevation: 2,
+        title: const Text(
+          'Carrito de Compras',
+          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
         ),
-        centerTitle: true,
-        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.orange),
+          onPressed: () => Navigator.of(context).pop(_items),
+        ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child:
-                _cartItems.isEmpty
-                    ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.shopping_cart_outlined,
-                            size: 60,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            'Tu carrito está vacío',
-                            style: TextStyle(fontSize: 18, color: Colors.grey),
-                          ),
-                        ],
+      body:
+          _items.isEmpty
+              ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.shopping_cart_outlined,
+                      size: 100,
+                      color: Colors.grey,
+                    ),
+                    SizedBox(height: 20),
+                    Text(
+                      'Tu carrito está vacío',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
                       ),
-                    )
-                    : ListView.builder(
-                      padding: EdgeInsets.all(16.0),
-                      itemCount: _cartItems.length,
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Añade productos para continuar',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              )
+              : Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _items.length,
                       itemBuilder: (context, index) {
-                        return _buildCartItem(
-                          imageUrl: _cartItems[index]['imageUrl'] as String?,
-                          name: _cartItems[index]['name'],
-                          price: _cartItems[index]['price'],
-                          quantity: _cartItems[index]['quantity'],
-                          onDecrease: () => _updateQuantity(index, -1),
-                          onIncrease: () => _updateQuantity(index, 1),
-                          onRemove: () => _removeItem(index),
+                        final item = _items[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: _buildCartItem(item, index),
                         );
                       },
                     ),
-          ),
-          if (_cartItems.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'TOTAL',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        '${_calculateTotal().toStringAsFixed(2)} €',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
                   ),
-                  SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (context) =>
-                                  CheckoutScreen(cartItems: _cartItems),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      minimumSize: Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                    ),
-                    child: Text(
-                      'Hacer pedido',
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                  _buildCheckoutSection(),
                 ],
               ),
-            ),
+    );
+  }
+
+  Widget _buildCartItem(Map<String, dynamic> item, int index) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.orange,
-        unselectedItemColor: Colors.grey,
-        currentIndex: 0,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => FoodHomeScreen()),
-            );
-          } else if (index == 1) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => ShopScreen()),
-            );
-          } else if (index == 2) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => OrderHistoryScreen()),
-            );
-          } else if (index == 3) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => FavouritesScreen()),
-            );
-          } else if (index == 4) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => MenuScreen()),
-            );
-          }
-        },
-        items: [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
-          BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.favorite_border),
-            label: 'Favoritos',
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: CachedNetworkImage(
+              imageUrl: item['imageUrl'] as String,
+              width: 70,
+              height: 70,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(color: Colors.grey[200]),
+              errorWidget:
+                  (context, url, error) => const Icon(
+                    Icons.fastfood,
+                    size: 70,
+                    color: Colors.orange,
+                  ),
+            ),
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menú'),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['name'] as String,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  item['price'] as String,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: Colors.orange,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.remove_circle_outline),
+                color: Colors.orange,
+                onPressed: () => _updateQuantity(index, -1),
+              ),
+              Text(
+                '${item['quantity']}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline),
+                color: Colors.orange,
+                onPressed: () => _updateQuantity(index, 1),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildCartItem({
-    String? imageUrl,
-    required String name,
-    required String price,
-    required int quantity,
-    required VoidCallback onDecrease,
-    required VoidCallback onIncrease,
-    required VoidCallback onRemove,
-  }) {
-    return Dismissible(
-      key: Key(name),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: EdgeInsets.only(right: 20),
-        color: Colors.red,
-        child: Icon(Icons.delete, color: Colors.white),
+  Widget _buildCheckoutSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(30),
+          topRight: Radius.circular(30),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 1,
+            blurRadius: 10,
+            offset: const Offset(0, -3),
+          ),
+        ],
       ),
-      onDismissed: (direction) => onRemove(),
-      child: Container(
-        margin: EdgeInsets.only(bottom: 16.0),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child:
-                  imageUrl != null
-                      ? Image.network(
-                        imageUrl,
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (context, error, stackTrace) => Icon(
-                              Icons.fastfood,
-                              size: 80,
-                              color: Colors.orange,
-                            ),
-                      )
-                      : Icon(Icons.fastfood, size: 80, color: Colors.orange),
-            ),
-            SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Total:',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              Text(
+                '\$${_total.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                // Implement checkout functionality
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Procesando pedido...'),
+                    duration: Duration(seconds: 2),
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    price,
-                    style: TextStyle(fontSize: 16, color: Colors.black),
-                  ),
-                ],
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+              child: const Text(
+                'REALIZAR PEDIDO',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
             ),
-            Row(
-              children: [
-                IconButton(
-                  onPressed: onDecrease,
-                  icon: Icon(Icons.remove_circle, color: Colors.grey),
-                ),
-                Text('$quantity', style: TextStyle(fontSize: 16)),
-                IconButton(
-                  onPressed: onIncrease,
-                  icon: Icon(Icons.add_circle, color: Colors.grey),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

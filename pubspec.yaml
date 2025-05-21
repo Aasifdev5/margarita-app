@@ -1,3 +1,4 @@
+
 name: margarita
 description: A new Flutter project.
 publish_to: "none"
@@ -24,7 +25,11 @@ dependencies:
   intl: ^0.18.1
   slide_to_act: ^2.0.1
   flutter_rating_bar: ^4.0.1
-shared_preferences: ^2.3.0
+  cached_network_image: ^3.3.1
+  flutter_bloc: ^8.1.5
+  bloc: ^8.1.4
+  equatable: ^2.0.5 # To help with state comparison
+  shared_preferences: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -38,8 +43,8 @@ flutter:
     - assets/images/
 
 flutter_launcher_icons:
-  android: true # Enable Android icon generation
-  ios: true # Enable iOS icon generation (optional, set to false if not needed)
-  image_path: "assets/images/logo.png" # Path to your logo.png
-  adaptive_icon_background: "#FFFFFF" # Optional: Background color for adaptive icons (Android)
-  adaptive_icon_foreground: "assets/images/logo.png" # Optional: Foreground image for adaptive icons (Android)
+  android: true
+  ios: true
+  image_path: "assets/images/logo.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/logo.png"

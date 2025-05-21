@@ -1,70 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:margarita/screens/menu.dart'; // Importar MenuScreen
-import 'package:margarita/screens/food_home.dart'; // Importar FoodHomeScreen
-import 'package:margarita/screens/shop.dart'; // Importar ShopScreen
-import 'package:margarita/screens/orderHistory.dart'; // Importar OrderHistoryScreen
+import 'package:cached_network_image/cached_network_image.dart';
 
 class FavouritesScreen extends StatefulWidget {
+  final List<Map<String, dynamic>> favorites;
+
+  const FavouritesScreen({Key? key, required this.favorites}) : super(key: key);
+
   @override
-  _FavouritesScreenState createState() => _FavouritesScreenState();
+  State<FavouritesScreen> createState() => _FavouritesScreenState();
 }
 
 class _FavouritesScreenState extends State<FavouritesScreen> {
-  // Lista de artículos favoritos (reemplazar con datos del backend)
-  List<Map<String, dynamic>> _favorites = [
-    {
-      'name': 'Pizza Margarita',
-      'price': 12.99,
-      'imageUrl':
-          'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
-    },
-    {
-      'name': 'Pasta Alfredo',
-      'price': 9.99,
-      'imageUrl':
-          'https://images.unsplash.com/photo-1516100882582-96c3a05fe590',
-    },
-    {
-      'name': 'Ensalada César',
-      'price': 7.49,
-      'imageUrl':
-          'https://images.unsplash.com/photo-1512621776951-a57141f2eefd',
-    },
-  ];
+  late List<Map<String, dynamic>> _favorites;
 
-  // Función para eliminar un artículo de favoritos
-  void _removeFavorite(int index) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Eliminar favorito'),
-          content: Text(
-            '¿Estás seguro de que deseas eliminar este artículo de tus favoritos?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('Cancelar', style: TextStyle(color: Colors.grey)),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _favorites.removeAt(index);
-                });
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('¡Artículo eliminado de favoritos!')),
-                );
-              },
-              child: Text('Eliminar', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
+  @override
+  void initState() {
+    super.initState();
+    _favorites = List.from(widget.favorites);
+  }
+
+  void _removeFromFavorites(int index) {
+    setState(() {
+      _favorites.removeAt(index);
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Eliminado de favoritos')));
   }
 
   @override
@@ -72,164 +33,62 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        backgroundColor: Colors.grey[100],
-        elevation: 0,
-        title: Text(
-          'Favoritos',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-          ),
+        backgroundColor: Colors.white,
+        elevation: 2,
+        title: const Text(
+          'Mis Favoritos',
+          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
         ),
-        centerTitle: true,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.orange),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => MenuScreen()),
-            );
-          },
+          icon: const Icon(Icons.arrow_back, color: Colors.orange),
+          onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child:
-            _favorites.isEmpty
-                ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.favorite_border,
-                        size: 80,
-                        color: Colors.grey[400],
+      body:
+          _favorites.isEmpty
+              ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.favorite_border, size: 100, color: Colors.grey),
+                    SizedBox(height: 20),
+                    Text(
+                      'No tienes favoritos',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
                       ),
-                      SizedBox(height: 16),
-                      Text(
-                        '¡Aún no hay favoritos!',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Agrega artículos a tus favoritos para verlos aquí.',
-                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                )
-                : ListView.builder(
-                  itemCount: _favorites.length,
-                  itemBuilder: (context, index) {
-                    final item = _favorites[index];
-                    return Card(
-                      color: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      margin: EdgeInsets.only(bottom: 16),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Row(
-                          children: [
-                            // Imagen del artículo
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: Image.network(
-                                item['imageUrl'],
-                                width: 80,
-                                height: 80,
-                                fit: BoxFit.cover,
-                                errorBuilder:
-                                    (context, error, stackTrace) => Container(
-                                      width: 80,
-                                      height: 80,
-                                      color: Colors.grey[300],
-                                      child: Icon(
-                                        Icons.fastfood,
-                                        color: Colors.grey[600],
-                                        size: 40,
-                                      ),
-                                    ),
-                              ),
-                            ),
-                            SizedBox(width: 16),
-                            // Detalles del artículo
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item['name'],
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    '\$${item['price'].toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.orange,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            // Botón de eliminar
-                            IconButton(
-                              icon: Icon(Icons.favorite, color: Colors.red),
-                              onPressed: () {
-                                _removeFavorite(index);
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Añade productos a tus favoritos',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
                 ),
-      ),
+              )
+              : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _favorites.length,
+                itemBuilder: (context, index) {
+                  final item = _favorites[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: _buildFavoriteItem(item, index),
+                  );
+                },
+              ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.orange,
         unselectedItemColor: Colors.grey,
-        currentIndex: 3, // Favoritos seleccionado
+        currentIndex: 3,
         onTap: (index) {
-          if (index == 0) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => FoodHomeScreen()),
-            );
-          } else if (index == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => ShopScreen()),
-            );
-          } else if (index == 2) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => OrderHistoryScreen()),
-            );
-          } else if (index == 3) {
-            // Ya en FavouritesScreen, no es necesario navegar
-          } else if (index == 4) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => MenuScreen()),
-            );
-          }
+          if (index == 3) return;
+          Navigator.pop(context);
         },
-        items: [
+        items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
           BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
@@ -238,6 +97,79 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
             label: 'Favoritos',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menú'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFavoriteItem(Map<String, dynamic> item, int index) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: CachedNetworkImage(
+              imageUrl: item['imageUrl'] as String,
+              width: 80,
+              height: 80,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(color: Colors.grey[200]),
+              errorWidget:
+                  (context, url, error) => const Icon(
+                    Icons.fastfood,
+                    size: 80,
+                    color: Colors.orange,
+                  ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['name'] as String,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  item['description'] as String,
+                  style: TextStyle(color: Colors.grey[600]),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  item['price'] as String,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.orange,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.favorite, color: Colors.red),
+            onPressed: () => _removeFromFavorites(index),
+          ),
         ],
       ),
     );

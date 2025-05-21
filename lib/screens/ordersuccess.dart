@@ -118,7 +118,9 @@ class OrderSuccessScreen extends StatelessWidget {
           } else if (index == 3) {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => FavouritesScreen()),
+              MaterialPageRoute(
+                builder: (context) => FavouritesScreen(favorites: []),
+              ),
             );
           } else if (index == 4) {
             Navigator.push(

@@ -1,147 +1,100 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:margarita/blocs/product_bloc.dart';
+import 'package:margarita/blocs/product_event.dart';
+import 'package:margarita/blocs/product_state.dart';
+import 'package:margarita/models/product.dart';
 import 'package:margarita/screens/cart.dart';
-import 'package:margarita/screens/menu.dart';
 import 'package:margarita/screens/food_home.dart';
 import 'package:margarita/screens/orderHistory.dart';
 import 'package:margarita/screens/favourites.dart';
+import 'package:margarita/screens/menu.dart';
 
 class ShopScreen extends StatefulWidget {
-  final String category;
+  final String? category;
 
-  const ShopScreen({Key? key, this.category = ''}) : super(key: key);
+  const ShopScreen({super.key, this.category});
 
   @override
-  _ShopScreenState createState() => _ShopScreenState();
+  State<ShopScreen> createState() => _ShopScreenState();
 }
 
 class _ShopScreenState extends State<ShopScreen> {
-  List<Map<String, dynamic>> cartItems = [];
-  List<String> favoriteItems = [];
-  TextEditingController _searchController = TextEditingController();
+  final List<Map<String, dynamic>> cartItems = [];
+  final List<Map<String, dynamic>> favoriteItems = [];
+  final TextEditingController _searchController = TextEditingController();
   bool _showSearch = false;
+  final ScrollController _scrollController = ScrollController();
 
-  final Map<String, List<Map<String, dynamic>>> categoryItems = {
-    'Italiana': [
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
-        'name': 'Pizza Margarita',
-        'description': 'Tomate, mozzarella y albahaca',
-        'price': '12,00 €',
-      },
-    ],
-    'Pizza': [
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1513106580091-1d82408b8f8a',
-        'name': 'Pizza Margarita',
-        'description': 'Tomate, mozzarella y albahaca',
-        'price': '12,00 €',
-      },
-    ],
-    'Hamburguesas': [
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
-        'name': 'Cheeseburger',
-        'description': 'Lleva queso, lechuga y tomate',
-        'price': '9,50 €',
-      },
-    ],
-    'Tacos': [
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1523049673857-eb18f78959f8',
-        'name': 'Tacos',
-        'description': 'Tacos con carne y salsa',
-        'price': '8,00 €',
-      },
-    ],
-    'Snacks': [
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1626700051175-9f77c845a7e0',
-        'name': 'Papas Fritas',
-        'description': 'Papas crujientes con salsa',
-        'price': '4,50 €',
-      },
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1629121520897-3472a6e4b1f0',
-        'name': 'Nachos',
-        'description': 'Nachos con queso fundido y jalapeños',
-        'price': '6,00 €',
-      },
-    ],
-    'Bebidas': [
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b',
-        'name': 'Refresco',
-        'description': 'Cola, limonada o naranja',
-        'price': '2,50 €',
-      },
-      {
-        'imageUrl': 'https://images.unsplash.com/photo-1544140708-514c08d36e72',
-        'name': 'Agua Mineral',
-        'description': 'Agua con o sin gas',
-        'price': '1,50 €',
-      },
-    ],
-    'Postres': [
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1576618141411-753f2356c48c',
-        'name': 'Tarta de Queso',
-        'description': 'Tarta cremosa con base de galleta',
-        'price': '5,00 €',
-      },
-      {
-        'imageUrl':
-            'https://images.unsplash.com/photo-1586789070921-31a080e3b4f0',
-        'name': 'Helado',
-        'description': 'Helado de vainilla o chocolate',
-        'price': '3,50 €',
-      },
-    ],
-  };
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialProducts();
+    _setupScrollController();
+  }
+
+  void _loadInitialProducts() {
+    context.read<ProductBloc>().add(FetchProducts(category: widget.category));
+  }
+
+  void _setupScrollController() {
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >=
+              _scrollController.position.maxScrollExtent * 0.8 &&
+          !_scrollController.position.outOfRange) {
+        final state = context.read<ProductBloc>().state;
+        if (state is ProductLoaded &&
+            !state.hasReachedMax &&
+            state.nextPageUrl != null) {
+          context.read<ProductBloc>().add(LoadMoreProducts(state.nextPageUrl!));
+        }
+      }
+    });
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   void _addToCart(Map<String, dynamic> item) {
     setState(() {
-      final existing = cartItems.firstWhere(
+      final existingIndex = cartItems.indexWhere(
         (cartItem) => cartItem['name'] == item['name'],
-        orElse: () => {},
       );
 
-      if (existing.isNotEmpty) {
-        existing['quantity'] = (existing['quantity'] as int? ?? 0) + 1;
+      if (existingIndex != -1) {
+        cartItems[existingIndex]['quantity'] =
+            (cartItems[existingIndex]['quantity'] as int) + 1;
       } else {
         cartItems.add({...item, 'quantity': 1});
       }
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${item['name']} agregado al carrito!')),
+      SnackBar(content: Text('${item['name']} añadido al carrito!')),
     );
   }
 
-  void _toggleFavorite(String itemName) {
+  void _toggleFavorite(Map<String, dynamic> item) {
     setState(() {
-      if (favoriteItems.contains(itemName)) {
-        favoriteItems.remove(itemName);
+      final itemName = item['name'] as String;
+      final existingIndex = favoriteItems.indexWhere(
+        (fav) => fav['name'] == itemName,
+      );
+
+      if (existingIndex != -1) {
+        favoriteItems.removeAt(existingIndex);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$itemName eliminado de favoritos!')),
         );
       } else {
-        favoriteItems.add(itemName);
+        favoriteItems.add(item);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$itemName agregado a favoritos!')),
+          SnackBar(content: Text('$itemName añadido a favoritos!')),
         );
       }
     });
@@ -156,202 +109,192 @@ class _ShopScreenState extends State<ShopScreen> {
 
   void _performSearch() {
     final searchTerm = _searchController.text.trim();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          searchTerm.isEmpty
-              ? 'Por favor, ingresa un término de búsqueda'
-              : 'Buscando "$searchTerm"...',
+    if (searchTerm.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, introduce un término de búsqueda'),
         ),
-      ),
-    );
+      );
+      return;
+    }
+    context.read<ProductBloc>().add(SearchProducts(query: searchTerm));
   }
 
-  List<Map<String, dynamic>> _getFilteredItems(String tabCategory) {
-    print('Filtering for tab: $tabCategory, category: ${widget.category}');
-
-    // Validate category
-    if (widget.category.isNotEmpty &&
-        !categoryItems.containsKey(widget.category)) {
-      print('Invalid category: ${widget.category}');
-      return [];
-    }
-
-    // If a specific category is passed, show only that category's items
-    if (widget.category.isNotEmpty) {
-      final items = categoryItems[widget.category] ?? [];
-      final validItems = items.where(_isValidItem).toList();
-      print('Specific category items for ${widget.category}: $validItems');
-      return validItems;
-    }
-
-    // Map tabs to their respective categories
-    final tabToCategory = {
-      'Clásicos': ['Italiana', 'Pizza', 'Hamburguesas', 'Tacos'],
+  List<Map<String, dynamic>> _getFilteredItems(
+    String tabCategory,
+    List<Product> products,
+  ) {
+    const tabToCategory = {
+      'Clásicos': ['Italian', 'Pizza', 'Burgers', 'Tacos'],
       'Snacks': ['Snacks'],
-      'Bebidas': ['Bebidas'],
-      'Postres': ['Postres'],
+      'Bebidas': ['Drinks'],
+      'Postres': ['Desserts'],
     };
 
-    // Get items for the current tab's category
+    final productMaps =
+        products.map((product) {
+          return {
+            'id': product.id,
+            'category': product.category,
+            'imageUrl': product.image,
+            'name': product.name,
+            'description': product.description,
+            'price':
+                product.price != null
+                    ? '\$${product.price!.toStringAsFixed(2)}'
+                    : 'Precio no disponible',
+          };
+        }).toList();
+
+    if (tabCategory == 'Todos') {
+      return productMaps;
+    }
+
     final categories = tabToCategory[tabCategory] ?? [];
-    final seen = <String>{};
-    final items =
-        categoryItems.entries
-            .where((entry) => categories.contains(entry.key))
-            .expand((entry) => entry.value)
-            .where((item) {
-              if (!_isValidItem(item)) {
-                print('Invalid item found: $item');
-                return false;
-              }
-              final name = item['name'] as String;
-              if (seen.contains(name)) return false;
-              seen.add(name);
-              return true;
-            })
-            .toList();
-    print('Tab $tabCategory items: $items');
-    return items;
+    return productMaps
+        .where((item) => categories.contains(item['category']))
+        .toList();
   }
 
-  bool _isValidItem(Map<String, dynamic> item) {
-    final isValid =
-        item['imageUrl'] is String &&
-        item['name'] is String &&
-        item['description'] is String &&
-        item['price'] is String &&
-        item['imageUrl']?.isNotEmpty == true &&
-        item['name']?.isNotEmpty == true &&
-        item['description']?.isNotEmpty == true &&
-        item['price']?.isNotEmpty == true;
-    if (!isValid) {
-      print('Invalid item: $item');
-    }
-    return isValid;
-  }
+  static const tabs = [
+    Tab(text: 'Todos'),
+    Tab(text: 'Clásicos'),
+    Tab(text: 'Snacks'),
+    Tab(text: 'Bebidas'),
+    Tab(text: 'Postres'),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    final tabIndex =
-        {
-          'Italiana': 0,
-          'Pizza': 0,
-          'Hamburguesas': 0,
-          'Tacos': 0,
-          'Snacks': 1,
-          'Bebidas': 2,
-          'Postres': 3,
-        }[widget.category] ??
-        0;
-
     return DefaultTabController(
-      length: 4,
-      initialIndex: tabIndex,
+      length: tabs.length,
       child: Scaffold(
         backgroundColor: Colors.grey[100],
-        appBar: PreferredSize(
-          preferredSize: const Size.fromHeight(100.0),
-          child: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 2,
-            title:
-                _showSearch
-                    ? TextField(
-                      controller: _searchController,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: 'Buscar comida...',
-                        border: InputBorder.none,
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: _toggleSearch,
-                        ),
-                      ),
-                      onSubmitted: (_) => _performSearch(),
-                    )
-                    : Text(
-                      widget.category.isEmpty ? 'Tienda' : widget.category,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-            centerTitle: true,
-            actions:
-                _showSearch
-                    ? [
-                      IconButton(
-                        icon: const Icon(Icons.search, color: Colors.orange),
-                        onPressed: _performSearch,
-                      ),
-                    ]
-                    : [
-                      IconButton(
-                        icon: const Icon(Icons.search, color: Colors.orange),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 2,
+          title:
+              _showSearch
+                  ? TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar productos...',
+                      border: InputBorder.none,
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.close),
                         onPressed: _toggleSearch,
                       ),
-                      Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          IconButton(
-                            icon: const Icon(
-                              Icons.shopping_cart,
-                              color: Colors.orange,
-                            ),
-                            onPressed: () async {
-                              final result = await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => CartScreen(cartItems: cartItems),
-                                ),
-                              );
-                              if (result != null) {
-                                setState(() => cartItems = result);
-                              }
-                            },
+                    ),
+                    onSubmitted: (_) => _performSearch(),
+                  )
+                  : Text(
+                    widget.category?.isNotEmpty == true
+                        ? widget.category!
+                        : 'Tienda',
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.orange),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          actions:
+              _showSearch
+                  ? [
+                    IconButton(
+                      icon: const Icon(Icons.search, color: Colors.orange),
+                      onPressed: _performSearch,
+                    ),
+                  ]
+                  : [
+                    IconButton(
+                      icon: const Icon(Icons.search, color: Colors.orange),
+                      onPressed: _toggleSearch,
+                    ),
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.shopping_cart,
+                            color: Colors.orange,
                           ),
-                          if (cartItems.isNotEmpty)
-                            Positioned(
-                              right: 8,
-                              top: 8,
-                              child: CircleAvatar(
-                                radius: 10,
-                                backgroundColor: Colors.red,
-                                child: Text(
-                                  '${cartItems.length}',
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.white,
-                                  ),
+                          onPressed: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (_) => CartScreen(cartItems: cartItems),
+                              ),
+                            );
+                            if (result != null && result is List) {
+                              setState(
+                                () =>
+                                    cartItems
+                                      ..clear()
+                                      ..addAll(
+                                        result.cast<Map<String, dynamic>>(),
+                                      ),
+                              );
+                            }
+                          },
+                        ),
+                        if (cartItems.isNotEmpty)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: CircleAvatar(
+                              radius: 10,
+                              backgroundColor: Colors.red,
+                              child: Text(
+                                '${cartItems.length}',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white,
                                 ),
                               ),
                             ),
-                        ],
-                      ),
-                    ],
-            bottom: const TabBar(
-              labelColor: Colors.orange,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Colors.orange,
-              tabs: [
-                Tab(text: 'Clásicos'),
-                Tab(text: 'Snacks'),
-                Tab(text: 'Bebidas'),
-                Tab(text: 'Postres'),
-              ],
-            ),
+                          ),
+                      ],
+                    ),
+                  ],
+          bottom: const TabBar(
+            labelColor: Colors.orange,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: Colors.orange,
+            tabs: tabs,
           ),
         ),
-        body: TabBarView(
-          children: [
-            _buildTabContent('Clásicos'),
-            _buildTabContent('Snacks'),
-            _buildTabContent('Bebidas'),
-            _buildTabContent('Postres'),
-          ],
+        body: BlocBuilder<ProductBloc, ProductState>(
+          builder: (context, state) {
+            if (state is ProductLoading && state.isInitial) {
+              return const Center(child: CircularProgressIndicator());
+            } else if (state is ProductError) {
+              return _buildErrorWidget(state.message);
+            } else if (state is ProductLoaded) {
+              return RefreshIndicator(
+                onRefresh: () async {
+                  _loadInitialProducts();
+                  return Future.delayed(const Duration(seconds: 1));
+                },
+                child: TabBarView(
+                  children:
+                      tabs
+                          .asMap()
+                          .entries
+                          .map(
+                            (entry) =>
+                                _buildTabContent(tabs[entry.key].text!, state),
+                          )
+                          .toList(),
+                ),
+              );
+            }
+            return const Center(child: Text('No hay productos disponibles'));
+          },
         ),
         bottomNavigationBar: BottomNavigationBar(
           type: BottomNavigationBarType.fixed,
@@ -359,15 +302,16 @@ class _ShopScreenState extends State<ShopScreen> {
           unselectedItemColor: Colors.grey,
           currentIndex: 1,
           onTap: (index) {
+            if (index == 1) return;
             final pages = [
               FoodHomeScreen(),
               null, // current
               OrderHistoryScreen(),
-              FavouritesScreen(),
+              FavouritesScreen(favorites: favoriteItems),
               MenuScreen(),
             ];
-            if (index != 1) {
-              Navigator.push(
+            if (pages[index] != null) {
+              Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (_) => pages[index]!),
               );
@@ -384,46 +328,44 @@ class _ShopScreenState extends State<ShopScreen> {
               icon: Icon(Icons.favorite_border),
               label: 'Favoritos',
             ),
-            BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menu'),
+            BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menú'),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTabContent(String tabCategory) {
-    final filteredItems = _getFilteredItems(tabCategory);
+  Widget _buildTabContent(String tabCategory, ProductLoaded state) {
+    final filteredItems = _getFilteredItems(tabCategory, state.products);
     if (filteredItems.isEmpty) {
       return Center(
         child: Text(
-          'No hay productos disponibles para $tabCategory${widget.category.isNotEmpty ? ' (${widget.category})' : ''}',
+          'No hay productos disponibles para $tabCategory${widget.category?.isNotEmpty == true ? ' (${widget.category})' : ''}',
         ),
       );
     }
-    return ListView(
+    return ListView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.all(16.0),
-      children:
-          filteredItems.map((item) {
-            // Safe access with fallbacks
-            final imageUrl = item['imageUrl'] as String? ?? '';
-            final name = item['name'] as String? ?? 'Unknown';
-            final description = item['description'] as String? ?? '';
-            final price = item['price'] as String? ?? '0,00 €';
-            if (!_isValidItem(item)) {
-              print('Skipping invalid item in build: $item');
-              return const SizedBox.shrink();
-            }
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16.0),
-              child: _buildFoodItem(
-                imageUrl: imageUrl,
-                name: name,
-                description: description,
-                price: price,
-                onAdd: () => _addToCart(item),
-              ),
-            );
-          }).toList(),
+      itemCount: filteredItems.length + (state.hasReachedMax ? 0 : 1),
+      itemBuilder: (context, index) {
+        if (index == filteredItems.length && !state.hasReachedMax) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final item = filteredItems[index];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16.0),
+          child: _buildFoodItem(
+            imageUrl: item['imageUrl'] as String,
+            name: item['name'] as String,
+            description: item['description'] as String,
+            price: item['price'] as String,
+            isFavorite: favoriteItems.any((fav) => fav['name'] == item['name']),
+            onAdd: () => _addToCart(item),
+            onFavorite: () => _toggleFavorite(item),
+          ),
+        );
+      },
     );
   }
 
@@ -432,27 +374,36 @@ class _ShopScreenState extends State<ShopScreen> {
     required String name,
     required String description,
     required String price,
+    required bool isFavorite,
     required VoidCallback onAdd,
+    required VoidCallback onFavorite,
   }) {
-    final isFavorite = favoriteItems.contains(name);
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: Image.network(
-              imageUrl.isEmpty ? 'https://via.placeholder.com/80' : imageUrl,
+            child: CachedNetworkImage(
+              imageUrl: imageUrl,
               width: 80,
               height: 80,
               fit: BoxFit.cover,
-              errorBuilder:
-                  (_, __, ___) => const Icon(
+              placeholder: (context, url) => Container(color: Colors.grey[200]),
+              errorWidget:
+                  (context, url, error) => const Icon(
                     Icons.fastfood,
                     size: 80,
                     color: Colors.orange,
@@ -473,7 +424,6 @@ class _ShopScreenState extends State<ShopScreen> {
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     IconButton(
@@ -481,20 +431,30 @@ class _ShopScreenState extends State<ShopScreen> {
                         isFavorite ? Icons.favorite : Icons.favorite_border,
                         color: isFavorite ? Colors.red : Colors.grey,
                       ),
-                      onPressed: () => _toggleFavorite(name),
+                      onPressed: onFavorite,
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(description, style: const TextStyle(color: Colors.grey)),
+                Text(
+                  description,
+                  style: TextStyle(color: Colors.grey[600]),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: 8),
                 Text(
                   price,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.orange,
+                  ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           ElevatedButton(
             onPressed: onAdd,
             style: ElevatedButton.styleFrom(
@@ -502,8 +462,38 @@ class _ShopScreenState extends State<ShopScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
-            child: const Text('Agregar', style: TextStyle(color: Colors.white)),
+            child: const Text('Añadir', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget(String message) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            message,
+            style: const TextStyle(color: Colors.red, fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: _loadInitialProducts,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            child: const Text(
+              'Reintentar',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
