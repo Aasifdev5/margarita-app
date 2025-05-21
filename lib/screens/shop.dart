@@ -10,6 +10,8 @@ import 'package:margarita/screens/food_home.dart';
 import 'package:margarita/screens/orderHistory.dart';
 import 'package:margarita/screens/favourites.dart';
 import 'package:margarita/screens/menu.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ShopScreen extends StatefulWidget {
   final String? category;
@@ -26,16 +28,78 @@ class _ShopScreenState extends State<ShopScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _showSearch = false;
   final ScrollController _scrollController = ScrollController();
+  String _categoryName = '';
+  static const String baseUrl =
+      'http://10.0.2.2:8000'; // Base URL for the emulator
 
   @override
   void initState() {
     super.initState();
     _loadInitialProducts();
+    _fetchCategoryName();
     _setupScrollController();
   }
 
   void _loadInitialProducts() {
     context.read<ProductBloc>().add(FetchProducts(category: widget.category));
+  }
+
+  Future<void> _fetchCategoryName() async {
+    print('Fetching category name for category: ${widget.category}');
+    if (widget.category != null && widget.category!.isNotEmpty) {
+      try {
+        final response = await http.get(
+          Uri.parse('$baseUrl/api/category-name/${widget.category}'),
+        );
+        print(
+          'Response status: ${response.statusCode}, body: ${response.body}',
+        );
+        if (response.statusCode == 200) {
+          try {
+            final data = json.decode(response.body);
+            if (data is Map<String, dynamic>) {
+              setState(() {
+                _categoryName =
+                    data['name'] ??
+                    (data['category'] != null
+                        ? data['category']['name']
+                        : null) ??
+                    widget.category ??
+                    'Tienda';
+              });
+              print('Category name set to: $_categoryName');
+            } else {
+              print('Error: Response is not a JSON object');
+              setState(() {
+                _categoryName = widget.category ?? 'Tienda';
+              });
+            }
+          } catch (e) {
+            print('JSON decode error: $e');
+            setState(() {
+              _categoryName = widget.category ?? 'Tienda';
+            });
+          }
+        } else {
+          print(
+            'Failed to fetch category name: ${response.statusCode}, body: ${response.body}',
+          );
+          setState(() {
+            _categoryName = widget.category ?? 'Tienda';
+          });
+        }
+      } catch (e) {
+        print('HTTP request error: $e');
+        setState(() {
+          _categoryName = widget.category ?? 'Tienda';
+        });
+      }
+    } else {
+      print('Category is null or empty, setting to Tienda');
+      setState(() {
+        _categoryName = 'Tienda';
+      });
+    }
   }
 
   void _setupScrollController() {
@@ -147,6 +211,11 @@ class _ShopScreenState extends State<ShopScreen> {
         }).toList();
 
     if (tabCategory == 'Todos') {
+      if (_categoryName != 'Tienda' &&
+          widget.category != null &&
+          widget.category!.isNotEmpty) {
+        return productMaps;
+      }
       return productMaps;
     }
 
@@ -189,9 +258,7 @@ class _ShopScreenState extends State<ShopScreen> {
                     onSubmitted: (_) => _performSearch(),
                   )
                   : Text(
-                    widget.category?.isNotEmpty == true
-                        ? widget.category!
-                        : 'Tienda',
+                    _categoryName.isNotEmpty ? _categoryName : 'Tienda',
                     style: const TextStyle(
                       color: Colors.black87,
                       fontWeight: FontWeight.bold,
@@ -293,7 +360,9 @@ class _ShopScreenState extends State<ShopScreen> {
                 ),
               );
             }
-            return const Center(child: Text('No hay productos disponibles'));
+            return Center(
+              child: Text('No hay productos disponibles para $_categoryName'),
+            );
           },
         ),
         bottomNavigationBar: BottomNavigationBar(
@@ -340,7 +409,7 @@ class _ShopScreenState extends State<ShopScreen> {
     if (filteredItems.isEmpty) {
       return Center(
         child: Text(
-          'No hay productos disponibles para $tabCategory${widget.category?.isNotEmpty == true ? ' (${widget.category})' : ''}',
+          'No hay productos disponibles para $tabCategory${_categoryName.isNotEmpty && _categoryName != 'Tienda' ? ' ($_categoryName)' : ''}',
         ),
       );
     }
