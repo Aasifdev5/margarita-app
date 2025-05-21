@@ -12,6 +12,7 @@ import 'package:margarita/screens/favourites.dart';
 import 'package:margarita/screens/menu.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:margarita/services/api_service.dart'; // Import ApiService
 
 class ShopScreen extends StatefulWidget {
   final String? category;
@@ -29,8 +30,7 @@ class _ShopScreenState extends State<ShopScreen> {
   bool _showSearch = false;
   final ScrollController _scrollController = ScrollController();
   String _categoryName = '';
-  static const String baseUrl =
-      'http://10.0.2.2:8000'; // Base URL for the emulator
+  static const String baseUrl = 'http://10.0.2.2:8000';
 
   @override
   void initState() {
@@ -38,6 +38,7 @@ class _ShopScreenState extends State<ShopScreen> {
     _loadInitialProducts();
     _fetchCategoryName();
     _setupScrollController();
+    _fetchCart();
   }
 
   void _loadInitialProducts() {
@@ -49,7 +50,7 @@ class _ShopScreenState extends State<ShopScreen> {
     if (widget.category != null && widget.category!.isNotEmpty) {
       try {
         final response = await http.get(
-          Uri.parse('$baseUrl/api/category-name/${widget.category}'),
+          Uri.parse('$baseUrl/category-name/${widget.category}'),
         );
         print(
           'Response status: ${response.statusCode}, body: ${response.body}',
@@ -102,6 +103,29 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
+  Future<void> _fetchCart() async {
+    if (!await ApiService.isLoggedIn()) return;
+    try {
+      final headers = await ApiService.getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/cart'),
+        headers: headers,
+      );
+      print('Fetch cart response: ${response.statusCode}, ${response.body}');
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          cartItems.clear();
+          cartItems.addAll(List<Map<String, dynamic>>.from(data['cart']));
+        });
+      } else {
+        print('Failed to fetch cart: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching cart: $e');
+    }
+  }
+
   void _setupScrollController() {
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
@@ -124,23 +148,72 @@ class _ShopScreenState extends State<ShopScreen> {
     super.dispose();
   }
 
-  void _addToCart(Map<String, dynamic> item) {
-    setState(() {
-      final existingIndex = cartItems.indexWhere(
-        (cartItem) => cartItem['name'] == item['name'],
+  Future<void> _addToCart(Map<String, dynamic> item) async {
+    if (!await ApiService.isLoggedIn()) {
+      setState(() {
+        final existingIndex = cartItems.indexWhere(
+          (cartItem) => cartItem['name'] == item['name'],
+        );
+        if (existingIndex != -1) {
+          cartItems[existingIndex]['quantity'] =
+              (cartItems[existingIndex]['quantity'] as int) + 1;
+        } else {
+          cartItems.add({...item, 'quantity': 1});
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${item['name']} añadido localmente, inicia sesión para sincronizar',
+          ),
+        ),
       );
+      return;
+    }
 
-      if (existingIndex != -1) {
-        cartItems[existingIndex]['quantity'] =
-            (cartItems[existingIndex]['quantity'] as int) + 1;
+    try {
+      final headers = await ApiService.getHeaders();
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/cart/add'),
+        headers: headers,
+        body: json.encode({'product_id': item['id'], 'quantity': 1}),
+      );
+      print('Add to cart response: ${response.statusCode}, ${response.body}');
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          cartItems.clear();
+          cartItems.addAll(List<Map<String, dynamic>>.from(data['cart']));
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${item['name']} añadido al carrito!')),
+        );
       } else {
-        cartItems.add({...item, 'quantity': 1});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al añadir al carrito: ${response.statusCode}'),
+          ),
+        );
       }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${item['name']} añadido al carrito!')),
-    );
+    } catch (e) {
+      print('Error adding to cart: $e');
+      setState(() {
+        final existingIndex = cartItems.indexWhere(
+          (cartItem) => cartItem['name'] == item['name'],
+        );
+        if (existingIndex != -1) {
+          cartItems[existingIndex]['quantity'] =
+              (cartItems[existingIndex]['quantity'] as int) + 1;
+        } else {
+          cartItems.add({...item, 'quantity': 1});
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${item['name']} añadido localmente debido a error'),
+        ),
+      );
+    }
   }
 
   void _toggleFavorite(Map<String, dynamic> item) {
@@ -298,14 +371,11 @@ class _ShopScreenState extends State<ShopScreen> {
                               ),
                             );
                             if (result != null && result is List) {
-                              setState(
-                                () =>
-                                    cartItems
-                                      ..clear()
-                                      ..addAll(
-                                        result.cast<Map<String, dynamic>>(),
-                                      ),
-                              );
+                              setState(() {
+                                cartItems
+                                  ..clear()
+                                  ..addAll(result.cast<Map<String, dynamic>>());
+                              });
                             }
                           },
                         ),

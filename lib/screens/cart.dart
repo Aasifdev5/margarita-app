@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:margarita/screens/checkout.dart';
+import 'package:margarita/services/api_service.dart'; // Import ApiService
 
 class CartScreen extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
@@ -13,6 +17,7 @@ class CartScreen extends StatefulWidget {
 class _CartScreenState extends State<CartScreen> {
   late List<Map<String, dynamic>> _items;
   double _total = 0.0;
+  static const String baseUrl = 'http://10.0.2.2:8000';
 
   @override
   void initState() {
@@ -31,16 +36,95 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
-  void _updateQuantity(int index, int change) {
-    setState(() {
-      final newQuantity = (_items[index]['quantity'] as int) + change;
-      if (newQuantity <= 0) {
-        _items.removeAt(index);
-      } else {
-        _items[index]['quantity'] = newQuantity;
+  Future<void> _updateQuantity(int index, int change) async {
+    final item = _items[index];
+    final newQuantity = (item['quantity'] as int) + change;
+
+    if (newQuantity <= 0) {
+      try {
+        final headers = await ApiService.getHeaders();
+        final response = await http.post(
+          Uri.parse('$baseUrl/api/cart/remove'),
+          headers: headers,
+          body: json.encode({'product_id': item['id'], 'remove_all': true}),
+        );
+        print(
+          'Remove from cart response: ${response.statusCode}, ${response.body}',
+        );
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          setState(() {
+            _items.clear();
+            _items.addAll(List<Map<String, dynamic>>.from(data['cart']));
+            _calculateTotal();
+          });
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al actualizar el carrito')),
+          );
+        }
+      } catch (e) {
+        print('Error updating cart: $e');
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error de conexión')));
       }
-      _calculateTotal();
-    });
+      return;
+    }
+
+    try {
+      final headers = await ApiService.getHeaders();
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/cart/add'),
+        headers: headers,
+        body: json.encode({'product_id': item['id'], 'quantity': change}),
+      );
+      print('Update cart response: ${response.statusCode}, ${response.body}');
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          _items.clear();
+          _items.addAll(List<Map<String, dynamic>>.from(data['cart']));
+          _calculateTotal();
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al actualizar el carrito')),
+        );
+      }
+    } catch (e) {
+      print('Error updating cart: $e');
+      setState(() {
+        if (newQuantity > 0) {
+          _items[index]['quantity'] = newQuantity;
+        } else {
+          _items.removeAt(index);
+        }
+        _calculateTotal();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Actualizado localmente debido a error')),
+      );
+    }
+  }
+
+  Future<void> _checkout() async {
+    if (_items.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('El carrito está vacío')));
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => CheckoutScreen(cartItems: _items)),
+    );
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   @override
@@ -90,16 +174,19 @@ class _CartScreenState extends State<CartScreen> {
               : Column(
                 children: [
                   Expanded(
-                    child: ListView.builder(
+                    child: ListView(
                       padding: const EdgeInsets.all(16),
-                      itemCount: _items.length,
-                      itemBuilder: (context, index) {
-                        final item = _items[index];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: _buildCartItem(item, index),
-                        );
-                      },
+                      children: [
+                        // Cart items
+                        ..._items.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final item = entry.value;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: _buildCartItem(item, index),
+                          );
+                        }).toList(),
+                      ],
                     ),
                   ),
                   _buildCheckoutSection(),
@@ -109,6 +196,12 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   Widget _buildCartItem(Map<String, dynamic> item, int index) {
+    // Prepend base URL to imageUrl
+    final imageUrl =
+        item['imageUrl'] != null && item['imageUrl'].isNotEmpty
+            ? '$baseUrl/${item['imageUrl'].startsWith('/') ? item['imageUrl'].substring(1) : item['imageUrl']}'
+            : null;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -127,19 +220,34 @@ class _CartScreenState extends State<CartScreen> {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: CachedNetworkImage(
-              imageUrl: item['imageUrl'] as String,
-              width: 70,
-              height: 70,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Container(color: Colors.grey[200]),
-              errorWidget:
-                  (context, url, error) => const Icon(
-                    Icons.fastfood,
-                    size: 70,
-                    color: Colors.orange,
-                  ),
-            ),
+            child:
+                imageUrl != null
+                    ? CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      width: 70,
+                      height: 70,
+                      fit: BoxFit.cover,
+                      placeholder:
+                          (context, url) => Container(
+                            color: Colors.grey[200],
+                            child: const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          ),
+                      errorWidget: (context, url, error) {
+                        print('Image load error for URL: $url, Error: $error');
+                        return const Icon(
+                          Icons.broken_image,
+                          size: 70,
+                          color: Colors.grey,
+                        );
+                      },
+                    )
+                    : const Icon(
+                      Icons.fastfood,
+                      size: 70,
+                      color: Colors.orange,
+                    ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -147,7 +255,7 @@ class _CartScreenState extends State<CartScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item['name'] as String,
+                  item['name'] as String? ?? 'Producto sin nombre',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -155,7 +263,7 @@ class _CartScreenState extends State<CartScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  item['price'] as String,
+                  item['price'] as String? ?? '\$0.00',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
@@ -173,7 +281,7 @@ class _CartScreenState extends State<CartScreen> {
                 onPressed: () => _updateQuantity(index, -1),
               ),
               Text(
-                '${item['quantity']}',
+                '${item['quantity'] ?? 1}',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -232,15 +340,7 @@ class _CartScreenState extends State<CartScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
-                // Implement checkout functionality
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Procesando pedido...'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              },
+              onPressed: _checkout,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange,
                 padding: const EdgeInsets.symmetric(vertical: 15),
