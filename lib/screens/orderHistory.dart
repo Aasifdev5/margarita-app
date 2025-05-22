@@ -7,6 +7,8 @@ import 'package:margarita/screens/shop.dart';
 import 'package:margarita/screens/favourites.dart';
 
 class OrderHistoryScreen extends StatefulWidget {
+  const OrderHistoryScreen({Key? key}) : super(key: key);
+
   @override
   _OrderHistoryScreenState createState() => _OrderHistoryScreenState();
 }
@@ -14,6 +16,7 @@ class OrderHistoryScreen extends StatefulWidget {
 class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   List<Order> _orders = [];
   bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -22,6 +25,11 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   }
 
   Future<void> loadOrders() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final orders = await OrderService.fetchOrders();
       setState(() {
@@ -29,7 +37,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString();
+      });
       print('Error loading orders: $e');
     }
   }
@@ -45,14 +56,16 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Fecha: ${order.date}'),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Text('Total: \$${order.total}'),
-              SizedBox(height: 8),
-              Text('Artículos:'),
+              const SizedBox(height: 8),
+              const Text('Artículos:'),
               ...order.items.map(
                 (item) => Padding(
                   padding: const EdgeInsets.only(left: 16.0, top: 4.0),
-                  child: Text('- $item'),
+                  child: Text(
+                    '- ${item['name']} (x${item['quantity']}, \$${item['price']})',
+                  ),
                 ),
               ),
             ],
@@ -60,7 +73,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cerrar', style: TextStyle(color: Colors.orange)),
+              child: const Text(
+                'Cerrar',
+                style: TextStyle(color: Colors.orange),
+              ),
             ),
           ],
         );
@@ -75,7 +91,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
       appBar: AppBar(
         backgroundColor: Colors.grey[100],
         elevation: 0,
-        title: Text(
+        title: const Text(
           'Historial de Pedidos',
           style: TextStyle(
             fontSize: 24,
@@ -85,9 +101,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         ),
         centerTitle: true,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.orange),
+          icon: const Icon(Icons.arrow_back, color: Colors.orange),
           onPressed:
-              () => Navigator.push(
+              () => Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (context) => MenuScreen()),
               ),
@@ -95,14 +111,57 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
       ),
       body:
           _isLoading
-              ? Center(child: CircularProgressIndicator())
+              ? const Center(child: CircularProgressIndicator())
+              : _errorMessage != null
+              ? SingleChildScrollView(
+                // Added to prevent overflow
+                padding: const EdgeInsets.all(16.0),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        size: 80,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error al cargar pedidos',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage!,
+                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: loadOrders,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text('Reintentar'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
               : _orders.isEmpty
               ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.receipt_long, size: 80, color: Colors.grey[400]),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     Text(
                       '¡Aún no tienes pedidos!',
                       style: TextStyle(
@@ -111,7 +170,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                         color: Colors.grey[600],
                       ),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
                       'Tus pedidos anteriores aparecerán aquí.',
                       style: TextStyle(fontSize: 16, color: Colors.grey[600]),
@@ -129,7 +188,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    margin: EdgeInsets.only(bottom: 16, left: 16, right: 16),
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
@@ -140,7 +202,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                             children: [
                               Text(
                                 'Pedido #${order.orderNumber}',
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.black,
@@ -148,7 +210,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                               ),
                               Text(
                                 '\$${order.total}',
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.orange,
@@ -156,7 +218,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                               ),
                             ],
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           Text(
                             'Fecha: ${order.date}',
                             style: TextStyle(
@@ -164,20 +226,20 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                               color: Colors.grey[600],
                             ),
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           Text(
-                            'Artículos: ${order.items.join(', ')}',
+                            'Artículos: ${order.items.map((item) => "${item['name']} (x${item['quantity']})").join(', ')}',
                             style: TextStyle(
                               fontSize: 16,
                               color: Colors.grey[600],
                             ),
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           Align(
                             alignment: Alignment.centerRight,
                             child: TextButton(
                               onPressed: () => _showOrderDetails(order),
-                              child: Text(
+                              child: const Text(
                                 'Ver Detalles',
                                 style: TextStyle(
                                   fontSize: 14,
@@ -199,27 +261,25 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         unselectedItemColor: Colors.grey,
         currentIndex: 2,
         onTap: (index) {
-          if (index == 0) {
-            Navigator.push(
+          Widget? screen;
+          switch (index) {
+            case 0:
+              screen = FoodHomeScreen();
+              break;
+            case 1:
+              screen = const ShopScreen();
+              break;
+            case 3:
+              screen = const FavouritesScreen(favorites: []);
+              break;
+            case 4:
+              screen = MenuScreen();
+              break;
+          }
+          if (screen != null) {
+            Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => FoodHomeScreen()),
-            );
-          } else if (index == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => ShopScreen()),
-            );
-          } else if (index == 3) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => FavouritesScreen(favorites: []),
-              ),
-            );
-          } else if (index == 4) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => MenuScreen()),
+              MaterialPageRoute(builder: (context) => screen!),
             );
           }
         },

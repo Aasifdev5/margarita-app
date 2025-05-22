@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:margarita/services/api_service.dart';
 
 class FavouritesScreen extends StatefulWidget {
   final List<Map<String, dynamic>> favorites;
@@ -19,13 +20,53 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
     _favorites = List.from(widget.favorites);
   }
 
-  void _removeFromFavorites(int index) {
-    setState(() {
-      _favorites.removeAt(index);
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Eliminado de favoritos')));
+  Future<void> _removeFromFavorites(int index) async {
+    final item = _favorites[index];
+    final itemName = item['name'] as String;
+    if (!await ApiService.isLoggedIn()) {
+      setState(() {
+        _favorites.removeAt(index);
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Eliminado de favoritos')));
+      return;
+    }
+
+    try {
+      final response = await ApiService.delete(
+        '/api/favorites/remove/${item['id']}',
+      );
+      if (response['statusCode'] == 200) {
+        setState(() {
+          _favorites.clear();
+          _favorites.addAll(
+            List<Map<String, dynamic>>.from(response['body']['favorites']),
+          );
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Eliminado de favoritos')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error al eliminar de favoritos: ${response['statusCode']}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error removing from favorites: $e');
+      setState(() {
+        _favorites.removeAt(index);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Eliminado de favoritos localmente debido a error'),
+        ),
+      );
+    }
   }
 
   @override
@@ -41,7 +82,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.orange),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(_favorites),
         ),
       ),
       body:
@@ -86,7 +127,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
         currentIndex: 3,
         onTap: (index) {
           if (index == 3) return;
-          Navigator.pop(context);
+          Navigator.pop(context, _favorites);
         },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
@@ -103,6 +144,17 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
   }
 
   Widget _buildFavoriteItem(Map<String, dynamic> item, int index) {
+    const baseUrl = 'http://10.0.2.2:8000/';
+    String imageUrl =
+        item['imageUrl']?.toString() ?? item['image']?.toString() ?? '';
+    if (imageUrl.isNotEmpty && !imageUrl.startsWith('http')) {
+      imageUrl = imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
+      imageUrl =
+          baseUrl +
+          imageUrl.substring(1); // Remove leading slash for concatenation
+    }
+    print('Loading image for ${item['name']}: $imageUrl');
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -122,17 +174,22 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: CachedNetworkImage(
-              imageUrl: item['imageUrl'] as String,
+              imageUrl:
+                  imageUrl.isNotEmpty
+                      ? imageUrl
+                      : '$baseUrl/images/placeholder.jpg',
               width: 80,
               height: 80,
               fit: BoxFit.cover,
               placeholder: (context, url) => Container(color: Colors.grey[200]),
-              errorWidget:
-                  (context, url, error) => const Icon(
-                    Icons.fastfood,
-                    size: 80,
-                    color: Colors.orange,
-                  ),
+              errorWidget: (context, url, error) {
+                print('Image load error for ${item['name']}: $error');
+                return const Icon(
+                  Icons.fastfood,
+                  size: 80,
+                  color: Colors.orange,
+                );
+              },
             ),
           ),
           const SizedBox(width: 16),

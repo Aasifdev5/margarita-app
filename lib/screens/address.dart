@@ -6,6 +6,7 @@ import 'package:margarita/screens/orderHistory.dart';
 import 'package:margarita/screens/favourites.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:margarita/services/api_service.dart';
 
 class AddressScreen extends StatefulWidget {
   @override
@@ -13,18 +14,36 @@ class AddressScreen extends StatefulWidget {
 }
 
 class _AddressScreenState extends State<AddressScreen> {
-  List<Map<String, String>> _addresses = [
-    {
-      'label': 'Casa',
-      'street': '123 Calle Principal',
-      'city': 'Ciudadville',
-      'coordinates': '0.0,0.0',
-    },
-  ];
-
+  List<Map<String, dynamic>> _addresses = [];
+  bool _isLoading = true;
   bool _isGettingLocation = false;
 
-  Future<Map<String, String>?> _getCurrentLocation() async {
+  @override
+  void initState() {
+    super.initState();
+    _loadAddresses();
+  }
+
+  Future<void> _loadAddresses() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await ApiService.get('/api/addresses');
+      print('Addresses response: $response');
+
+      setState(() {
+        _addresses = List<Map<String, dynamic>>.from(response['addresses']);
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading addresses: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cargar direcciones: $e')),
+      );
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _getCurrentLocation() async {
     setState(() {
       _isGettingLocation = true;
     });
@@ -91,15 +110,96 @@ class _AddressScreenState extends State<AddressScreen> {
     return null;
   }
 
-  void _showAddressDialog({Map<String, String>? address, int? index}) {
+  Future<void> _addAddress(Map<String, dynamic> addressData) async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await ApiService.post('/api/addresses', addressData);
+
+      if (response['statusCode'] == 201) {
+        await _loadAddresses();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('¡Dirección agregada!')));
+      } else {
+        throw Exception(
+          response['body']['message'] ?? 'Error al agregar dirección',
+        );
+      }
+    } catch (e) {
+      print('Error adding address: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al agregar dirección: $e')));
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _updateAddress(
+    int addressId,
+    Map<String, dynamic> addressData,
+  ) async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await ApiService.put(
+        '/api/addresses/$addressId',
+        addressData,
+      );
+
+      if (response['statusCode'] == 200) {
+        await _loadAddresses();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('¡Dirección actualizada!')));
+      } else {
+        throw Exception(
+          response['body']['message'] ?? 'Error al actualizar dirección',
+        );
+      }
+    } catch (e) {
+      print('Error updating address: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al actualizar dirección: $e')),
+      );
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _deleteAddress(int addressId) async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await ApiService.delete('/api/addresses/$addressId');
+
+      if (response['statusCode'] == 200) {
+        await _loadAddresses();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('¡Dirección eliminada!')));
+      } else {
+        throw Exception(
+          response['body']['message'] ?? 'Error al eliminar dirección',
+        );
+      }
+    } catch (e) {
+      print('Error deleting address: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar dirección: $e')),
+      );
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showAddressDialog({Map<String, dynamic>? address}) {
     final isEditing = address != null;
     final labelController = TextEditingController(
-      text: address?['label'] ?? '',
+      text: isEditing ? address['label'] : '',
     );
     final streetController = TextEditingController(
-      text: address?['street'] ?? '',
+      text: isEditing ? address['street'] : '',
     );
-    final cityController = TextEditingController(text: address?['city'] ?? '');
+    final cityController = TextEditingController(
+      text: isEditing ? address['city'] : '',
+    );
+    bool isDefault = isEditing ? address['is_default'] ?? false : false;
 
     showDialog(
       context: context,
@@ -154,6 +254,27 @@ class _AddressScreenState extends State<AddressScreen> {
                       ),
                     ),
                     SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: isDefault,
+                          activeColor: Colors.orange,
+                          onChanged: (value) {
+                            setState(() {
+                              isDefault = value ?? false;
+                            });
+                          },
+                        ),
+                        Flexible(
+                          child: Text(
+                            'Establecer como dirección predeterminada',
+                            softWrap: true,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: () async {
                         final location = await _getCurrentLocation();
@@ -187,16 +308,18 @@ class _AddressScreenState extends State<AddressScreen> {
                 ),
                 TextButton(
                   onPressed: () {
-                    final newAddress = {
+                    final addressData = {
                       'label': labelController.text.trim(),
                       'street': streetController.text.trim(),
                       'city': cityController.text.trim(),
-                      'coordinates': address?['coordinates'] ?? '0.0,0.0',
+                      'coordinates':
+                          isEditing ? address['coordinates'] : '0.0,0.0',
+                      'is_default': isDefault,
                     };
 
-                    if (newAddress['label']!.isEmpty ||
-                        newAddress['street']!.isEmpty ||
-                        newAddress['city']!.isEmpty) {
+                    if (addressData['label']!.isEmpty ||
+                        addressData['street']!.isEmpty ||
+                        addressData['city']!.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('Por favor, completa todos los campos'),
@@ -205,23 +328,13 @@ class _AddressScreenState extends State<AddressScreen> {
                       return;
                     }
 
-                    setState(() {
-                      if (isEditing && index != null) {
-                        _addresses[index] = newAddress;
-                      } else {
-                        _addresses.add(newAddress);
-                      }
-                    });
                     Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          isEditing
-                              ? '¡Dirección actualizada!'
-                              : '¡Dirección agregada!',
-                        ),
-                      ),
-                    );
+
+                    if (isEditing) {
+                      _updateAddress(address['id'], addressData);
+                    } else {
+                      _addAddress(addressData);
+                    }
                   },
                   child: Text(
                     isEditing ? 'Actualizar' : 'Agregar',
@@ -236,7 +349,7 @@ class _AddressScreenState extends State<AddressScreen> {
     );
   }
 
-  void _deleteAddress(int index) {
+  void _confirmDeleteAddress(Map<String, dynamic> address) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -252,11 +365,8 @@ class _AddressScreenState extends State<AddressScreen> {
             ),
             TextButton(
               onPressed: () {
-                setState(() => _addresses.removeAt(index));
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('¡Dirección eliminada!')),
-                );
+                _deleteAddress(address['id']);
               },
               child: Text('Eliminar', style: TextStyle(color: Colors.red)),
             ),
@@ -291,159 +401,183 @@ class _AddressScreenState extends State<AddressScreen> {
               ),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => _showAddressDialog(),
-                icon: Icon(Icons.add, color: Colors.orange),
-                label: Text(
-                  'Agregar Nueva Dirección',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.orange,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(height: 16),
-            Expanded(
-              child:
-                  _addresses.isEmpty
-                      ? Center(
-                        child: Text(
-                          'No se encontraron direcciones. ¡Agrega una nueva dirección!',
+      body:
+          _isLoading
+              ? Center(child: CircularProgressIndicator(color: Colors.orange))
+              : Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => _showAddressDialog(),
+                        icon: Icon(Icons.add, color: Colors.orange),
+                        label: Text(
+                          'Agregar Nueva Dirección',
                           style: TextStyle(
                             fontSize: 16,
-                            color: Colors.grey[600],
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      )
-                      : ListView.builder(
-                        itemCount: _addresses.length,
-                        itemBuilder: (context, index) {
-                          final address = _addresses[index];
-                          return Card(
-                            color: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            margin: EdgeInsets.only(bottom: 16),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        address['label']!,
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.black,
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    Expanded(
+                      child:
+                          _addresses.isEmpty
+                              ? Center(
+                                child: Text(
+                                  'No se encontraron direcciones. ¡Agrega una nueva dirección!',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              )
+                              : RefreshIndicator(
+                                onRefresh: _loadAddresses,
+                                child: ListView.builder(
+                                  itemCount: _addresses.length,
+                                  itemBuilder: (context, index) {
+                                    final address = _addresses[index];
+                                    return Card(
+                                      color: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      margin: EdgeInsets.only(bottom: 16),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16.0),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
+                                              children: [
+                                                Flexible(
+                                                  child: Row(
+                                                    children: [
+                                                      Flexible(
+                                                        child: Text(
+                                                          address['label'],
+                                                          style: TextStyle(
+                                                            fontSize: 18,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors.black,
+                                                          ),
+                                                          overflow:
+                                                              TextOverflow
+                                                                  .ellipsis,
+                                                        ),
+                                                      ),
+                                                      if (address['is_default'] ==
+                                                          true)
+                                                        Container(
+                                                          margin:
+                                                              EdgeInsets.only(
+                                                                left: 8,
+                                                              ),
+                                                          padding:
+                                                              EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 2,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color:
+                                                                Colors.orange,
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  10,
+                                                                ),
+                                                          ),
+                                                          child: Text(
+                                                            'Predeterminada',
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Row(
+                                                  children: [
+                                                    IconButton(
+                                                      icon: Icon(
+                                                        Icons.edit,
+                                                        color: Colors.orange,
+                                                      ),
+                                                      onPressed:
+                                                          () =>
+                                                              _showAddressDialog(
+                                                                address:
+                                                                    address,
+                                                              ),
+                                                    ),
+                                                    IconButton(
+                                                      icon: Icon(
+                                                        Icons.delete,
+                                                        color: Colors.red,
+                                                      ),
+                                                      onPressed:
+                                                          () =>
+                                                              _confirmDeleteAddress(
+                                                                address,
+                                                              ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                            SizedBox(height: 8),
+                                            Text(
+                                              address['street'],
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                            SizedBox(height: 4),
+                                            Text(
+                                              address['city'],
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                            SizedBox(height: 8),
+                                            Text(
+                                              'Coordenadas: ${address['coordinates']}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[500],
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      Row(
-                                        children: [
-                                          IconButton(
-                                            icon: Icon(
-                                              Icons.edit,
-                                              color: Colors.orange,
-                                            ),
-                                            onPressed:
-                                                () => _showAddressDialog(
-                                                  address: address,
-                                                  index: index,
-                                                ),
-                                          ),
-                                          IconButton(
-                                            icon: Icon(
-                                              Icons.delete,
-                                              color: Colors.red,
-                                            ),
-                                            onPressed:
-                                                () => _deleteAddress(index),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    address['street']!,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    address['city']!,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    'Coordenadas: ${address['coordinates']}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[500],
-                                    ),
-                                  ),
-                                ],
+                                    );
+                                  },
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-            ),
-          ],
-        ),
-      ),
+                    ),
+                  ],
+                ),
+              ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.orange,
         unselectedItemColor: Colors.grey,
         currentIndex: 4,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => FoodHomeScreen()),
-            );
-          } else if (index == 1) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => ShopScreen(category: '')),
-            );
-          } else if (index == 2) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => OrderHistoryScreen()),
-            );
-          } else if (index == 3) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => FavouritesScreen(favorites: []),
-              ),
-            );
-          } else if (index == 4) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => MenuScreen()),
-            );
-          }
-        },
+        onTap: (index) => _onBottomNavItemTapped(index),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
           BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
@@ -455,6 +589,33 @@ class _AddressScreenState extends State<AddressScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menú'),
         ],
       ),
+    );
+  }
+
+  void _onBottomNavItemTapped(int index) {
+    Widget screen;
+    switch (index) {
+      case 0:
+        screen = FoodHomeScreen();
+        break;
+      case 1:
+        screen = ShopScreen(category: '');
+        break;
+      case 2:
+        screen = OrderHistoryScreen();
+        break;
+      case 3:
+        screen = FavouritesScreen(favorites: []);
+        break;
+      case 4:
+        screen = MenuScreen();
+        break;
+      default:
+        return;
+    }
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => screen),
     );
   }
 }

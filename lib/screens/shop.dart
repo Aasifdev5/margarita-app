@@ -37,8 +37,9 @@ class _ShopScreenState extends State<ShopScreen> {
     super.initState();
     _loadInitialProducts();
     _fetchCategoryName();
-    _setupScrollController();
+    _fetchFavorites(); // Added for favorites API
     _fetchCart();
+    _setupScrollController();
   }
 
   void _loadInitialProducts() {
@@ -49,12 +50,22 @@ class _ShopScreenState extends State<ShopScreen> {
     print('Fetching category name for category: ${widget.category}');
     if (widget.category != null && widget.category!.isNotEmpty) {
       try {
-        final response = await http.get(
-          Uri.parse('$baseUrl/category-name/${widget.category}'),
+        // First try with /api/ prefix
+        var response = await http.get(
+          Uri.parse('$baseUrl/api/category-name/${widget.category}'),
         );
+
+        // If that fails, try without /api/ prefix
+        if (response.statusCode != 200) {
+          response = await http.get(
+            Uri.parse('$baseUrl/category-name/${widget.category}'),
+          );
+        }
+
         print(
           'Response status: ${response.statusCode}, body: ${response.body}',
         );
+
         if (response.statusCode == 200) {
           try {
             final data = json.decode(response.body);
@@ -100,6 +111,24 @@ class _ShopScreenState extends State<ShopScreen> {
       setState(() {
         _categoryName = 'Tienda';
       });
+    }
+  }
+
+  Future<void> _fetchFavorites() async {
+    if (!await ApiService.isLoggedIn()) return;
+    try {
+      final response = await ApiService.get('/api/favorites');
+      setState(() {
+        favoriteItems.clear();
+        favoriteItems.addAll(
+          List<Map<String, dynamic>>.from(response['favorites']),
+        );
+      });
+    } catch (e) {
+      print('Error fetching favorites: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error al cargar favoritos')),
+      );
     }
   }
 
@@ -216,25 +245,111 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
-  void _toggleFavorite(Map<String, dynamic> item) {
-    setState(() {
-      final itemName = item['name'] as String;
+  Future<void> _toggleFavorite(Map<String, dynamic> item) async {
+    final itemName = item['name'] as String;
+    if (!await ApiService.isLoggedIn()) {
+      setState(() {
+        final existingIndex = favoriteItems.indexWhere(
+          (fav) => fav['name'] == itemName,
+        );
+
+        if (existingIndex != -1) {
+          favoriteItems.removeAt(existingIndex);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$itemName eliminado de favoritos!')),
+          );
+        } else {
+          favoriteItems.add(item);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$itemName añadido a favoritos!')),
+          );
+        }
+      });
+      return;
+    }
+
+    try {
       final existingIndex = favoriteItems.indexWhere(
         (fav) => fav['name'] == itemName,
       );
 
       if (existingIndex != -1) {
-        favoriteItems.removeAt(existingIndex);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$itemName eliminado de favoritos!')),
+        // Remove from favorites
+        final response = await ApiService.delete(
+          '/api/favorites/remove/${item['id']}',
         );
+        if (response['statusCode'] == 200) {
+          setState(() {
+            favoriteItems.clear();
+            favoriteItems.addAll(
+              List<Map<String, dynamic>>.from(response['body']['favorites']),
+            );
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$itemName eliminado de favoritos!')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Error al eliminar de favoritos: ${response['statusCode']}',
+              ),
+            ),
+          );
+        }
       } else {
-        favoriteItems.add(item);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$itemName añadido a favoritos!')),
-        );
+        // Add to favorites
+        final response = await ApiService.post('/api/favorites/add', {
+          'product_id': item['id'],
+        });
+        if (response['statusCode'] == 200) {
+          setState(() {
+            favoriteItems.clear();
+            favoriteItems.addAll(
+              List<Map<String, dynamic>>.from(response['body']['favorites']),
+            );
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$itemName añadido a favoritos!')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Error al añadir a favoritos: ${response['statusCode']}',
+              ),
+            ),
+          );
+        }
       }
-    });
+    } catch (e) {
+      print('Error toggling favorite: $e');
+      setState(() {
+        final existingIndex = favoriteItems.indexWhere(
+          (fav) => fav['name'] == itemName,
+        );
+
+        if (existingIndex != -1) {
+          favoriteItems.removeAt(existingIndex);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '$itemName eliminado de favoritos localmente debido a error',
+              ),
+            ),
+          );
+        } else {
+          favoriteItems.add(item);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '$itemName añadido a favoritos localmente debido a error',
+              ),
+            ),
+          );
+        }
+      });
+    }
   }
 
   void _toggleSearch() {

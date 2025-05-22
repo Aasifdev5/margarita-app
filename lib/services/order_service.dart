@@ -1,24 +1,41 @@
-// services/order_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:margarita/models/order.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:margarita/services/api_service.dart';
 
 class OrderService {
   static Future<List<Order>> fetchOrders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token'); // Assuming token is stored here
+    final headers = await ApiService.getHeaders();
 
-    final response = await http.get(
-      Uri.parse('http://10.0.2.2:8000/api/orders'),
-      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
-    );
+    if (!await ApiService.isLoggedIn()) {
+      throw Exception('No authentication token found. Please log in.');
+    }
+
+    final response = await http
+        .get(Uri.parse('${ApiService.baseUrl}/api/orders'), headers: headers)
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            throw Exception(
+              'Request timed out. Please check your network connection.',
+            );
+          },
+        );
 
     if (response.statusCode == 200) {
-      List<dynamic> data = json.decode(response.body);
-      return data.map((order) => Order.fromJson(order)).toList();
+      try {
+        List<dynamic> data = json.decode(response.body);
+        return data.map((order) => Order.fromJson(order)).toList();
+      } catch (e) {
+        throw Exception('Failed to parse orders: $e');
+      }
+    } else if (response.statusCode == 401) {
+      await ApiService.clearToken();
+      throw Exception('Unauthorized. Please log in again.');
     } else {
-      throw Exception('Failed to load orders');
+      throw Exception(
+        'Failed to load orders: ${response.statusCode} ${response.body}',
+      );
     }
   }
 }
