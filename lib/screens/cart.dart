@@ -17,7 +17,7 @@ class CartScreen extends StatefulWidget {
 class _CartScreenState extends State<CartScreen> {
   late List<Map<String, dynamic>> _items;
   double _total = 0.0;
-  static const String baseUrl = 'http://10.0.2.2:8000';
+  static const String baseUrl = 'https://remoto.digital';
 
   @override
   void initState() {

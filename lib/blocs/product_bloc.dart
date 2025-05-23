@@ -1,14 +1,14 @@
-import 'dart:convert';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:margarita/blocs/product_event.dart';
 import 'package:margarita/blocs/product_state.dart';
 import 'package:margarita/models/product.dart';
 
 class ProductBloc extends Bloc<ProductEvent, ProductState> {
-  static const String baseUrl = 'http://10.0.2.2:8000';
+  static const String baseUrl = 'https://remoto.digital';
 
-  ProductBloc() : super(const ProductInitial()) {
+  ProductBloc() : super(ProductInitial()) {
     on<FetchProducts>(_onFetchProducts);
     on<LoadMoreProducts>(_onLoadMoreProducts);
     on<SearchProducts>(_onSearchProducts);
@@ -18,24 +18,21 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
     FetchProducts event,
     Emitter<ProductState> emit,
   ) async {
+    emit(ProductLoading(isInitial: true));
     try {
-      emit(
-        ProductLoading(
-          isInitial: event.isRefresh ? false : state is! ProductLoaded,
-        ),
-      );
-
-      // Updated API URL logic to use RESTful endpoints
-      final String apiUrl =
+      final apiUrl =
           event.category != null && event.category!.isNotEmpty
-              ? '$baseUrl/api/products/${Uri.encodeComponent(event.category!)}'
+              ? '$baseUrl/api/products?category_id=${Uri.encodeComponent(event.category!)}'
               : '$baseUrl/api/products';
+      print('Fetching products from: $apiUrl');
 
       final response = await http.get(Uri.parse(apiUrl));
+      print('Product fetch response status: ${response.statusCode}');
+      print('Product fetch response body: ${response.body}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        final productsData = responseData['data'] as List<dynamic>? ?? [];
+        final data = json.decode(response.body);
+        final List<dynamic> productsData = data['data'] ?? [];
         final products =
             productsData
                 .map(
@@ -43,21 +40,30 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
                       Product.fromJson(json as Map<String, dynamic>, baseUrl),
                 )
                 .toList();
+        print('Fetched ${products.length} products: $products');
 
         emit(
           ProductLoaded(
             products: products,
-            nextPageUrl: responseData['next_page_url'] as String?,
-            hasReachedMax: responseData['next_page_url'] == null,
+            hasReachedMax: products.isEmpty || data['next_page_url'] == null,
+            nextPageUrl: data['next_page_url'],
           ),
+        );
+      } else if (response.statusCode == 404) {
+        print(
+          'No products found for category ${event.category}, returning empty list',
+        );
+        emit(
+          ProductLoaded(products: [], hasReachedMax: true, nextPageUrl: null),
         );
       } else {
         emit(
           ProductError('Failed to load products: HTTP ${response.statusCode}'),
         );
       }
-    } catch (e, stackTrace) {
-      emit(ProductError('Connection error: $e\n$stackTrace'));
+    } catch (e) {
+      print('Error fetching products: $e');
+      emit(ProductError('Failed to load products: $e'));
     }
   }
 
@@ -65,42 +71,53 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
     LoadMoreProducts event,
     Emitter<ProductState> emit,
   ) async {
-    if (state is! ProductLoaded) return;
-    final currentState = state as ProductLoaded;
-    if (currentState.hasReachedMax) return;
-
-    try {
-      final response = await http.get(Uri.parse(event.nextPageUrl));
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        final productsData = responseData['data'] as List<dynamic>? ?? [];
-        final newProducts =
-            productsData
-                .map(
-                  (json) =>
-                      Product.fromJson(json as Map<String, dynamic>, baseUrl),
-                )
-                .toList();
-
-        emit(
-          currentState.copyWith(
-            products: [...currentState.products, ...newProducts],
-            nextPageUrl: responseData['next_page_url'] as String?,
-            hasReachedMax: responseData['next_page_url'] == null,
-          ),
-        );
-      } else {
-        emit(
-          ProductError(
-            'Failed to load more products: HTTP ${response.statusCode}',
-          ),
-        );
-      }
-    } catch (e, stackTrace) {
+    final currentState = state;
+    if (currentState is ProductLoaded && !currentState.hasReachedMax) {
       emit(
-        ProductError('Connection error while loading more: $e\n$stackTrace'),
+        ProductLoading(
+          isInitial: false,
+          products: currentState.products,
+          hasReachedMax: currentState.hasReachedMax,
+        ),
       );
+
+      try {
+        print('Loading more products from: ${event.nextPageUrl}');
+        final response = await http.get(Uri.parse(event.nextPageUrl));
+        print('Load more response status: ${response.statusCode}');
+        print('Load more response body: ${response.body}');
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          final List<dynamic> productsData = data['data'] ?? [];
+          final newProducts =
+              productsData
+                  .map(
+                    (json) =>
+                        Product.fromJson(json as Map<String, dynamic>, baseUrl),
+                  )
+                  .toList();
+          print('Loaded ${newProducts.length} more products: $newProducts');
+
+          emit(
+            ProductLoaded(
+              products: [...currentState.products, ...newProducts],
+              hasReachedMax:
+                  newProducts.isEmpty || data['next_page_url'] == null,
+              nextPageUrl: data['next_page_url'],
+            ),
+          );
+        } else {
+          emit(
+            ProductError(
+              'Failed to load more products: HTTP ${response.statusCode}',
+            ),
+          );
+        }
+      } catch (e) {
+        print('Error loading more products: $e');
+        emit(ProductError('Failed to load more products: $e'));
+      }
     }
   }
 
@@ -108,19 +125,19 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
     SearchProducts event,
     Emitter<ProductState> emit,
   ) async {
-    try {
-      emit(const ProductLoading(isInitial: false));
+    emit(ProductLoading(isInitial: true));
 
-      // Keep search functionality using query parameter
-      final response = await http.get(
-        Uri.parse(
-          '$baseUrl/api/products?search=${Uri.encodeComponent(event.query)}',
-        ),
-      );
+    try {
+      final apiUrl =
+          '$baseUrl/api/products/search?query=${Uri.encodeComponent(event.query)}';
+      print('Searching products with URL: $apiUrl');
+      final response = await http.get(Uri.parse(apiUrl));
+      print('Search response status: ${response.statusCode}');
+      print('Search response body: ${response.body}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        final productsData = responseData['data'] as List<dynamic>? ?? [];
+        final data = json.decode(response.body);
+        final List<dynamic> productsData = data['data'] ?? [];
         final products =
             productsData
                 .map(
@@ -128,19 +145,26 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
                       Product.fromJson(json as Map<String, dynamic>, baseUrl),
                 )
                 .toList();
+        print('Search returned ${products.length} products: $products');
 
         emit(
           ProductLoaded(
             products: products,
-            hasReachedMax: true,
+            hasReachedMax: products.isEmpty || data['next_page_url'] == null,
+            nextPageUrl: data['next_page_url'],
             isSearchResult: true,
           ),
         );
       } else {
-        emit(ProductError('Search failed: HTTP ${response.statusCode}'));
+        emit(
+          ProductError(
+            'Failed to search products: HTTP ${response.statusCode}',
+          ),
+        );
       }
-    } catch (e, stackTrace) {
-      emit(ProductError('Search error: $e\n$stackTrace'));
+    } catch (e) {
+      print('Error searching products: $e');
+      emit(ProductError('Failed to search products: $e'));
     }
   }
 }

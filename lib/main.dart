@@ -53,7 +53,7 @@ class _SplashScreenState extends State<SplashScreen> {
       if (token != null) {
         final response = await http.get(
           Uri.parse(
-            'http://10.0.2.2:8000/api/user',
+            'https://remoto.digital/api/user',
           ), // Use 10.0.2.2 for Android emulator
           headers: {'Authorization': 'Bearer $token'},
         );
@@ -148,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final response = await http.post(
         Uri.parse(
-          'http://10.0.2.2:8000/api/login',
+          'https://remoto.digital/api/login',
         ), // Use 10.0.2.2 for Android emulator
         headers: {'Content-Type': 'application/json'},
         body: json.encode({

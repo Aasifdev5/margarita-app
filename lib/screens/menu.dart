@@ -32,7 +32,7 @@ class _MenuScreenState extends State<MenuScreen> {
 
       if (token != null) {
         final response = await http.post(
-          Uri.parse('http://10.0.2.2:8000/api/logout'),
+          Uri.parse('https://remoto.digital/api/logout'),
           headers: {
             'Authorization': 'Bearer $token',
             'Content-Type': 'application/json',

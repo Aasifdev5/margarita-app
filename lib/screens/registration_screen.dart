@@ -48,7 +48,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse('http://10.0.2.2:8000/api/register'),
+        Uri.parse('https://remoto.digital/api/register'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'name': _nameController.text.trim(),

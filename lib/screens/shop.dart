@@ -12,10 +12,10 @@ import 'package:margarita/screens/favourites.dart';
 import 'package:margarita/screens/menu.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:margarita/services/api_service.dart'; // Import ApiService
+import 'package:margarita/services/api_service.dart';
 
 class ShopScreen extends StatefulWidget {
-  final String? category;
+  final String? category; // Expected to be category_id (e.g., "30")
 
   const ShopScreen({super.key, this.category});
 
@@ -30,86 +30,124 @@ class _ShopScreenState extends State<ShopScreen> {
   bool _showSearch = false;
   final ScrollController _scrollController = ScrollController();
   String _categoryName = '';
-  static const String baseUrl = 'http://10.0.2.2:8000';
+  static const String baseUrl = 'https://remoto.digital';
+  List<String> _dynamicTabs = [];
+  Map<String, String> _categoryMapping = {};
 
   @override
   void initState() {
     super.initState();
+    print('ShopScreen initialized with category_id: ${widget.category}');
     _loadInitialProducts();
     _fetchCategoryName();
-    _fetchFavorites(); // Added for favorites API
+    _fetchCategories();
+    _fetchFavorites();
     _fetchCart();
     _setupScrollController();
   }
 
   void _loadInitialProducts() {
+    print('Loading initial products for category_id: ${widget.category}');
     context.read<ProductBloc>().add(FetchProducts(category: widget.category));
   }
 
   Future<void> _fetchCategoryName() async {
-    print('Fetching category name for category: ${widget.category}');
     if (widget.category != null && widget.category!.isNotEmpty) {
       try {
-        // First try with /api/ prefix
         var response = await http.get(
           Uri.parse('$baseUrl/api/category-name/${widget.category}'),
         );
 
-        // If that fails, try without /api/ prefix
         if (response.statusCode != 200) {
           response = await http.get(
             Uri.parse('$baseUrl/category-name/${widget.category}'),
           );
         }
 
-        print(
-          'Response status: ${response.statusCode}, body: ${response.body}',
-        );
-
         if (response.statusCode == 200) {
-          try {
-            final data = json.decode(response.body);
-            if (data is Map<String, dynamic>) {
-              setState(() {
-                _categoryName =
-                    data['name'] ??
-                    (data['category'] != null
-                        ? data['category']['name']
-                        : null) ??
-                    widget.category ??
-                    'Tienda';
-              });
-              print('Category name set to: $_categoryName');
-            } else {
-              print('Error: Response is not a JSON object');
-              setState(() {
-                _categoryName = widget.category ?? 'Tienda';
-              });
-            }
-          } catch (e) {
-            print('JSON decode error: $e');
-            setState(() {
-              _categoryName = widget.category ?? 'Tienda';
-            });
-          }
+          final data = json.decode(response.body);
+          setState(() {
+            _categoryName = data['name'] ?? widget.category ?? 'Tienda';
+            print('Category name fetched: $_categoryName');
+          });
         } else {
-          print(
-            'Failed to fetch category name: ${response.statusCode}, body: ${response.body}',
-          );
           setState(() {
             _categoryName = widget.category ?? 'Tienda';
+            print('Category name fallback: $_categoryName');
           });
         }
       } catch (e) {
-        print('HTTP request error: $e');
         setState(() {
           _categoryName = widget.category ?? 'Tienda';
+          print('Error fetching category name: $e');
         });
       }
     } else {
-      print('Category is null or empty, setting to Tienda');
       setState(() {
         _categoryName = 'Tienda';
+        print('No category provided, using default: $_categoryName');
+      });
+    }
+  }
+
+  Future<void> _fetchCategories() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/categories'));
+      print('Fetching categories, status code: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        print('Categories fetched: $data');
+        setState(() {
+          _dynamicTabs = [];
+          _categoryMapping = {};
+
+          if (widget.category != null && widget.category!.isNotEmpty) {
+            // If a main category is specified, only add the matching category
+            for (var category in data) {
+              String categoryName = category['name'];
+              String categoryId = category['id'].toString();
+              if (categoryId == widget.category) {
+                _dynamicTabs.add(categoryName);
+                _categoryMapping[categoryName] = categoryId;
+              }
+            }
+            if (_dynamicTabs.isEmpty) {
+              // Fallback if no matching category is found
+              _dynamicTabs.add(_categoryName);
+              _categoryMapping[_categoryName] = widget.category!;
+              print('No matching categories, using fallback: $_categoryName');
+            }
+          } else {
+            // If no main category, add all categories
+            for (var category in data) {
+              String categoryName = category['name'];
+              String categoryId = category['id'].toString();
+              _dynamicTabs.add(categoryName);
+              _categoryMapping[categoryName] = categoryId;
+            }
+            if (_dynamicTabs.isEmpty) {
+              _dynamicTabs.add('Tienda');
+              _categoryMapping['Tienda'] = 'Tienda';
+              print('No categories found, using default: Tienda');
+            }
+          }
+
+          print('Dynamic tabs: $_dynamicTabs');
+          print('Category mapping: $_categoryMapping');
+        });
+      } else {
+        print('Failed to fetch categories: ${response.statusCode}');
+        setState(() {
+          _dynamicTabs = [_categoryName];
+          _categoryMapping = {_categoryName: widget.category ?? _categoryName};
+        });
+      }
+    } catch (e) {
+      print('Error fetching categories: $e');
+      setState(() {
+        _dynamicTabs = [_categoryName];
+        _categoryMapping = {_categoryName: widget.category ?? _categoryName};
       });
     }
   }
@@ -123,12 +161,13 @@ class _ShopScreenState extends State<ShopScreen> {
         favoriteItems.addAll(
           List<Map<String, dynamic>>.from(response['favorites']),
         );
+        print('Favorites fetched: $favoriteItems');
       });
     } catch (e) {
-      print('Error fetching favorites: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error al cargar favoritos')),
       );
+      print('Error fetching favorites: $e');
     }
   }
 
@@ -140,15 +179,13 @@ class _ShopScreenState extends State<ShopScreen> {
         Uri.parse('$baseUrl/api/cart'),
         headers: headers,
       );
-      print('Fetch cart response: ${response.statusCode}, ${response.body}');
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
           cartItems.clear();
           cartItems.addAll(List<Map<String, dynamic>>.from(data['cart']));
+          print('Cart fetched: $cartItems');
         });
-      } else {
-        print('Failed to fetch cart: ${response.statusCode}');
       }
     } catch (e) {
       print('Error fetching cart: $e');
@@ -164,6 +201,7 @@ class _ShopScreenState extends State<ShopScreen> {
         if (state is ProductLoaded &&
             !state.hasReachedMax &&
             state.nextPageUrl != null) {
+          print('Loading more products, next page: ${state.nextPageUrl}');
           context.read<ProductBloc>().add(LoadMoreProducts(state.nextPageUrl!));
         }
       }
@@ -207,7 +245,6 @@ class _ShopScreenState extends State<ShopScreen> {
         headers: headers,
         body: json.encode({'product_id': item['id'], 'quantity': 1}),
       );
-      print('Add to cart response: ${response.statusCode}, ${response.body}');
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
@@ -225,7 +262,6 @@ class _ShopScreenState extends State<ShopScreen> {
         );
       }
     } catch (e) {
-      print('Error adding to cart: $e');
       setState(() {
         final existingIndex = cartItems.indexWhere(
           (cartItem) => cartItem['name'] == item['name'],
@@ -274,7 +310,6 @@ class _ShopScreenState extends State<ShopScreen> {
       );
 
       if (existingIndex != -1) {
-        // Remove from favorites
         final response = await ApiService.delete(
           '/api/favorites/remove/${item['id']}',
         );
@@ -298,7 +333,6 @@ class _ShopScreenState extends State<ShopScreen> {
           );
         }
       } else {
-        // Add to favorites
         final response = await ApiService.post('/api/favorites/add', {
           'product_id': item['id'],
         });
@@ -323,7 +357,6 @@ class _ShopScreenState extends State<ShopScreen> {
         }
       }
     } catch (e) {
-      print('Error toggling favorite: $e');
       setState(() {
         final existingIndex = favoriteItems.indexWhere(
           (fav) => fav['name'] == itemName,
@@ -369,6 +402,7 @@ class _ShopScreenState extends State<ShopScreen> {
       );
       return;
     }
+    print('Performing search with term: $searchTerm');
     context.read<ProductBloc>().add(SearchProducts(query: searchTerm));
   }
 
@@ -376,18 +410,12 @@ class _ShopScreenState extends State<ShopScreen> {
     String tabCategory,
     List<Product> products,
   ) {
-    const tabToCategory = {
-      'Clásicos': ['Italian', 'Pizza', 'Burgers', 'Tacos'],
-      'Snacks': ['Snacks'],
-      'Bebidas': ['Drinks'],
-      'Postres': ['Desserts'],
-    };
-
     final productMaps =
         products.map((product) {
           return {
             'id': product.id,
             'category': product.category,
+            'category_id': product.categoryId,
             'imageUrl': product.image,
             'name': product.name,
             'description': product.description,
@@ -398,193 +426,238 @@ class _ShopScreenState extends State<ShopScreen> {
           };
         }).toList();
 
-    if (tabCategory == 'Todos') {
-      if (_categoryName != 'Tienda' &&
-          widget.category != null &&
-          widget.category!.isNotEmpty) {
-        return productMaps;
-      }
-      return productMaps;
+    print('All products before filtering for tab $tabCategory: $productMaps');
+
+    List<Map<String, dynamic>> filteredProducts = productMaps;
+
+    // If widget.category is specified, filter by the main category
+    if (widget.category != null && widget.category!.isNotEmpty) {
+      filteredProducts =
+          productMaps.where((item) {
+            return item['category_id'].toString() == widget.category;
+          }).toList();
+      print(
+        'Applied main category filter (ID: ${widget.category}): $filteredProducts',
+      );
     }
 
-    final categories = tabToCategory[tabCategory] ?? [];
-    return productMaps
-        .where((item) => categories.contains(item['category']))
-        .toList();
-  }
+    // If we have only one tab or widget.category matches the tab, no further filtering is needed
+    final tabCategoryId = _categoryMapping[tabCategory];
+    if (_dynamicTabs.length > 1 &&
+        tabCategoryId != null &&
+        tabCategoryId.isNotEmpty &&
+        tabCategoryId != 'Tienda' &&
+        (widget.category == null || widget.category != tabCategoryId)) {
+      filteredProducts =
+          filteredProducts.where((item) {
+            return item['category_id'].toString() == tabCategoryId;
+          }).toList();
+      print(
+        'Filtered products for tab $tabCategory (ID: $tabCategoryId): $filteredProducts',
+      );
+    }
 
-  static const tabs = [
-    Tab(text: 'Todos'),
-    Tab(text: 'Clásicos'),
-    Tab(text: 'Snacks'),
-    Tab(text: 'Bebidas'),
-    Tab(text: 'Postres'),
-  ];
+    return filteredProducts;
+  }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: tabs.length,
-      child: Scaffold(
-        backgroundColor: Colors.grey[100],
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 2,
-          title:
-              _showSearch
-                  ? TextField(
-                    controller: _searchController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      hintText: 'Buscar productos...',
-                      border: InputBorder.none,
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: _toggleSearch,
-                      ),
-                    ),
-                    onSubmitted: (_) => _performSearch(),
-                  )
-                  : Text(
-                    _categoryName.isNotEmpty ? _categoryName : 'Tienda',
-                    style: const TextStyle(
-                      color: Colors.black87,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.orange),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          actions:
-              _showSearch
-                  ? [
-                    IconButton(
-                      icon: const Icon(Icons.search, color: Colors.orange),
-                      onPressed: _performSearch,
-                    ),
-                  ]
-                  : [
-                    IconButton(
-                      icon: const Icon(Icons.search, color: Colors.orange),
-                      onPressed: _toggleSearch,
-                    ),
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.shopping_cart,
-                            color: Colors.orange,
+      length: _dynamicTabs.length,
+      child: Builder(
+        builder: (context) {
+          final TabController tabController = DefaultTabController.of(context);
+          tabController.addListener(() {
+            if (!tabController.indexIsChanging) {
+              final selectedTab = _dynamicTabs[tabController.index];
+              print('Tab changed to $selectedTab');
+            }
+          });
+          return Scaffold(
+            backgroundColor: Colors.grey[100],
+            appBar: AppBar(
+              backgroundColor: Colors.white,
+              elevation: 2,
+              title:
+                  _showSearch
+                      ? TextField(
+                        controller: _searchController,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          hintText: 'Buscar productos...',
+                          border: InputBorder.none,
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: _toggleSearch,
                           ),
-                          onPressed: () async {
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder:
-                                    (_) => CartScreen(cartItems: cartItems),
-                              ),
-                            );
-                            if (result != null && result is List) {
-                              setState(() {
-                                cartItems
-                                  ..clear()
-                                  ..addAll(result.cast<Map<String, dynamic>>());
-                              });
-                            }
-                          },
                         ),
-                        if (cartItems.isNotEmpty)
-                          Positioned(
-                            right: 8,
-                            top: 8,
-                            child: CircleAvatar(
-                              radius: 10,
-                              backgroundColor: Colors.red,
-                              child: Text(
-                                '${cartItems.length}',
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.white,
+                        onSubmitted: (_) => _performSearch(),
+                      )
+                      : Text(
+                        _categoryName.isNotEmpty ? _categoryName : 'Tienda',
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.orange),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              actions:
+                  _showSearch
+                      ? [
+                        IconButton(
+                          icon: const Icon(Icons.search, color: Colors.orange),
+                          onPressed: _performSearch,
+                        ),
+                      ]
+                      : [
+                        IconButton(
+                          icon: const Icon(Icons.search, color: Colors.orange),
+                          onPressed: _toggleSearch,
+                        ),
+                        Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.shopping_cart,
+                                color: Colors.orange,
+                              ),
+                              onPressed: () async {
+                                final result = await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (_) => CartScreen(cartItems: cartItems),
+                                  ),
+                                );
+                                if (result != null && result is List) {
+                                  setState(() {
+                                    cartItems
+                                      ..clear()
+                                      ..addAll(
+                                        result.cast<Map<String, dynamic>>(),
+                                      );
+                                  });
+                                }
+                              },
+                            ),
+                            if (cartItems.isNotEmpty)
+                              Positioned(
+                                right: 8,
+                                top: 8,
+                                child: CircleAvatar(
+                                  radius: 10,
+                                  backgroundColor: Colors.red,
+                                  child: Text(
+                                    '${cartItems.length}',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
+                          ],
+                        ),
                       ],
-                    ),
-                  ],
-          bottom: const TabBar(
-            labelColor: Colors.orange,
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: Colors.orange,
-            tabs: tabs,
-          ),
-        ),
-        body: BlocBuilder<ProductBloc, ProductState>(
-          builder: (context, state) {
-            if (state is ProductLoading && state.isInitial) {
-              return const Center(child: CircularProgressIndicator());
-            } else if (state is ProductError) {
-              return _buildErrorWidget(state.message);
-            } else if (state is ProductLoaded) {
-              return RefreshIndicator(
-                onRefresh: () async {
-                  _loadInitialProducts();
-                  return Future.delayed(const Duration(seconds: 1));
-                },
-                child: TabBarView(
-                  children:
-                      tabs
-                          .asMap()
-                          .entries
-                          .map(
-                            (entry) =>
-                                _buildTabContent(tabs[entry.key].text!, state),
-                          )
-                          .toList(),
+              bottom:
+                  _dynamicTabs.length > 1
+                      ? TabBar(
+                        labelColor: Colors.orange,
+                        unselectedLabelColor: Colors.grey,
+                        indicatorColor: Colors.orange,
+                        tabs:
+                            _dynamicTabs.map((tab) => Tab(text: tab)).toList(),
+                      )
+                      : null,
+            ),
+            body: BlocBuilder<ProductBloc, ProductState>(
+              builder: (context, state) {
+                print('Current ProductBloc state: $state');
+                if (state is ProductLoading && state.isInitial) {
+                  return const Center(child: CircularProgressIndicator());
+                } else if (state is ProductError) {
+                  print('ProductBloc error: ${state.message}');
+                  return _buildErrorWidget(state.message);
+                } else if (state is ProductLoaded) {
+                  print('ProductLoaded with ${state.products.length} products');
+                  return RefreshIndicator(
+                    onRefresh: () async {
+                      _loadInitialProducts();
+                      return Future.delayed(const Duration(seconds: 1));
+                    },
+                    child:
+                        _dynamicTabs.length > 1
+                            ? TabBarView(
+                              children:
+                                  _dynamicTabs
+                                      .map(
+                                        (tab) => _buildTabContent(tab, state),
+                                      )
+                                      .toList(),
+                            )
+                            : _buildTabContent(
+                              _dynamicTabs.isNotEmpty
+                                  ? _dynamicTabs[0]
+                                  : _categoryName,
+                              state,
+                            ),
+                  );
+                }
+                print('No products available for $_categoryName');
+                return Center(
+                  child: Text(
+                    'No hay productos disponibles para $_categoryName',
+                  ),
+                );
+              },
+            ),
+            bottomNavigationBar: BottomNavigationBar(
+              type: BottomNavigationBarType.fixed,
+              selectedItemColor: Colors.orange,
+              unselectedItemColor: Colors.grey,
+              currentIndex: 1,
+              onTap: (index) {
+                if (index == 1) return;
+                final pages = [
+                  FoodHomeScreen(),
+                  null,
+                  OrderHistoryScreen(),
+                  FavouritesScreen(favorites: favoriteItems),
+                  MenuScreen(),
+                ];
+                if (pages[index] != null) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => pages[index]!),
+                  );
+                }
+              },
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.home),
+                  label: 'Inicio',
                 ),
-              );
-            }
-            return Center(
-              child: Text('No hay productos disponibles para $_categoryName'),
-            );
-          },
-        ),
-        bottomNavigationBar: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: Colors.orange,
-          unselectedItemColor: Colors.grey,
-          currentIndex: 1,
-          onTap: (index) {
-            if (index == 1) return;
-            final pages = [
-              FoodHomeScreen(),
-              null, // current
-              OrderHistoryScreen(),
-              FavouritesScreen(favorites: favoriteItems),
-              MenuScreen(),
-            ];
-            if (pages[index] != null) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => pages[index]!),
-              );
-            }
-          },
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-            BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.receipt),
-              label: 'Pedidos',
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.store),
+                  label: 'Tienda',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.receipt),
+                  label: 'Pedidos',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.favorite_border),
+                  label: 'Favoritos',
+                ),
+                BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menú'),
+              ],
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.favorite_border),
-              label: 'Favoritos',
-            ),
-            BottomNavigationBarItem(icon: Icon(Icons.menu), label: 'Menú'),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -592,12 +665,14 @@ class _ShopScreenState extends State<ShopScreen> {
   Widget _buildTabContent(String tabCategory, ProductLoaded state) {
     final filteredItems = _getFilteredItems(tabCategory, state.products);
     if (filteredItems.isEmpty) {
+      print('No filtered items for tab: $tabCategory');
       return Center(
         child: Text(
           'No hay productos disponibles para $tabCategory${_categoryName.isNotEmpty && _categoryName != 'Tienda' ? ' ($_categoryName)' : ''}',
         ),
       );
     }
+    print('Rendering ${filteredItems.length} items for tab: $tabCategory');
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(16.0),
@@ -718,7 +793,7 @@ class _ShopScreenState extends State<ShopScreen> {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
-            child: const Text('Añadir', style: TextStyle(color: Colors.white)),
+            child: const Text('Agregar', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

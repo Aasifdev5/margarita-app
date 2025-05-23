@@ -27,7 +27,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String _deliveryAddress = 'Seleccionar ubicación';
   String _note = '';
   bool _isLoadingLocation = false;
-  static const String baseUrl = 'http://10.0.2.2:8000';
+  static const String baseUrl = 'https://remoto.digital';
 
   @override
   void initState() {

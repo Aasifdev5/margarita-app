@@ -32,7 +32,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   List<Map<String, dynamic>> sliderItems = [];
   bool _isSliderLoading = true;
   String? _sliderErrorMessage;
-  final String baseUrl = 'http://10.0.2.2:8000'; // Base URL for the emulator
+  final String baseUrl = 'https://remoto.digital'; // Base URL for the emulator
 
   @override
   void initState() {

@@ -144,7 +144,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
   }
 
   Widget _buildFavoriteItem(Map<String, dynamic> item, int index) {
-    const baseUrl = 'http://10.0.2.2:8000/';
+    const baseUrl = 'https://remoto.digital/';
     String imageUrl =
         item['imageUrl']?.toString() ?? item['image']?.toString() ?? '';
     if (imageUrl.isNotEmpty && !imageUrl.startsWith('http')) {

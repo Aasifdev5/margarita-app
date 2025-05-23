@@ -14,11 +14,17 @@ class ProductInitial extends ProductState {
 
 class ProductLoading extends ProductState {
   final bool isInitial;
+  final List<Product>? products; // Add products to preserve current state
+  final bool? hasReachedMax; // Add hasReachedMax to preserve current state
 
-  const ProductLoading({this.isInitial = true});
+  const ProductLoading({
+    this.isInitial = true,
+    this.products,
+    this.hasReachedMax,
+  });
 
   @override
-  List<Object?> get props => [isInitial];
+  List<Object?> get props => [isInitial, products, hasReachedMax];
 }
 
 class ProductLoaded extends ProductState {
