@@ -6,11 +6,13 @@ import 'package:margarita/screens/food_home.dart'; // Ensure this path is correc
 import 'package:margarita/screens/registration_screen.dart'; // Updated import
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:margarita/blocs/product_bloc.dart';
-
+import 'package:intl/date_symbol_data_local.dart';
 import 'blocs/product_event.dart';
 import 'package:margarita/blocs/product_state.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('es');
   runApp(
     BlocProvider(
       create: (context) => ProductBloc()..add(FetchProducts()),

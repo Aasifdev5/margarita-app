@@ -6,11 +6,10 @@ import 'package:margarita/screens/shop.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:margarita/services/api_service.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
@@ -23,25 +22,172 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   String _paymentMethod = 'Efectivo';
-  File? _paymentReceipt;
-  String _deliveryAddress = 'Seleccionar ubicación';
+  String _deliveryAddress = 'Cargando direcciones...';
   String _note = '';
   bool _isLoadingLocation = false;
+  bool _isLoadingAddresses = true;
+  List<Map<String, dynamic>> _savedAddresses = [];
   static const String baseUrl = 'https://remoto.digital';
 
   @override
   void initState() {
     super.initState();
+    print('CheckoutScreen initState called');
     _validateCart();
+    _fetchSavedAddresses();
   }
 
   Future<void> _validateCart() async {
     if (widget.cartItems.isEmpty) {
+      print('Cart is empty, navigating back');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('El carrito está vacío')));
       await Future.delayed(const Duration(seconds: 1));
       Navigator.pop(context);
+    } else {
+      print('Cart items: ${widget.cartItems}');
+    }
+  }
+
+  Future<void> _fetchSavedAddresses() async {
+    setState(() {
+      _isLoadingAddresses = true;
+    });
+
+    try {
+      final headers = await ApiService.getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/addresses'),
+        headers: headers,
+      );
+
+      print('Addresses API response: ${response.statusCode}, ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List<dynamic> addresses = data['addresses'] ?? [];
+        setState(() {
+          _savedAddresses =
+              addresses.map((addr) {
+                return {
+                  'id': addr['id'],
+                  'label': addr['label'],
+                  'street': addr['street'],
+                  'city': addr['city'],
+                  'coordinates': addr['coordinates'],
+                  'is_default': addr['is_default'] ?? false,
+                  'display':
+                      '${addr['label']}: ${addr['street']}, ${addr['city']}',
+                };
+              }).toList();
+
+          // Set default address
+          final defaultAddress = _savedAddresses.firstWhere(
+            (addr) => addr['is_default'] == true,
+            orElse:
+                () =>
+                    _savedAddresses.isNotEmpty
+                        ? _savedAddresses.first
+                        : {
+                          'display': 'No hay direcciones guardadas',
+                          'street': '',
+                          'city': '',
+                          'coordinates': '',
+                        },
+          );
+          _deliveryAddress = defaultAddress['display'];
+          _isLoadingAddresses = false;
+        });
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Por favor, inicia sesión nuevamente')),
+        );
+        setState(() {
+          _deliveryAddress = 'Error de autenticación';
+          _isLoadingAddresses = false;
+        });
+      } else {
+        setState(() {
+          _deliveryAddress = 'Error al cargar direcciones';
+          _isLoadingAddresses = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar direcciones: ${response.body}'),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error fetching addresses: $e');
+      setState(() {
+        _deliveryAddress = 'Error al cargar direcciones';
+        _isLoadingAddresses = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error de conexión: $e')));
+    }
+  }
+
+  Future<void> _saveNewAddress(
+    String label,
+    String street,
+    String city,
+    String coordinates,
+  ) async {
+    try {
+      final headers = await ApiService.getHeaders();
+      final requestBody = {
+        'label': label,
+        'street': street,
+        'city': city,
+        'coordinates': coordinates,
+        'is_default': false,
+      };
+      print('Saving new address: $requestBody');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/addresses'),
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      print('Save address response: ${response.statusCode}, ${response.body}');
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        final newAddress = data['address'];
+        setState(() {
+          _savedAddresses.add({
+            'id': newAddress['id'],
+            'label': newAddress['label'],
+            'street': newAddress['street'],
+            'city': newAddress['city'],
+            'coordinates': newAddress['coordinates'],
+            'is_default': newAddress['is_default'] ?? false,
+            'display':
+                '${newAddress['label']}: ${newAddress['street']}, ${newAddress['city']}',
+          });
+          _deliveryAddress =
+              '${newAddress['label']}: ${newAddress['street']}, ${newAddress['city']}';
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error al guardar la nueva dirección: ${response.body}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error saving new address: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error de conexión al guardar la dirección: $e'),
+        ),
+      );
     }
   }
 
@@ -54,16 +200,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       int quantity = item['quantity'] ?? 1;
       return sum + (price * quantity);
     });
-  }
-
-  Future<void> _pickPaymentReceipt() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _paymentReceipt = File(pickedFile.path);
-      });
-    }
   }
 
   Future<void> _getCurrentLocation() async {
@@ -79,6 +215,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             content: Text('Por favor active los servicios de ubicación'),
           ),
         );
+        setState(() {
+          _isLoadingLocation = false;
+        });
         return;
       }
 
@@ -89,6 +228,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Permisos de ubicación denegados')),
           );
+          setState(() {
+            _isLoadingLocation = false;
+          });
           return;
         }
       }
@@ -101,6 +243,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ),
         );
+        setState(() {
+          _isLoadingLocation = false;
+        });
         return;
       }
 
@@ -115,41 +260,47 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks.first;
+        String street = place.street ?? 'Calle desconocida';
+        String city = place.locality ?? 'Ciudad desconocida';
+        String coordinates = '${position.latitude},${position.longitude}';
         String address =
             [
-                  place.street,
-                  place.locality,
-                  place.administrativeArea,
-                  place.country,
-                ]
-                .where((element) => element != null && element.isNotEmpty)
-                .join(', ')
-                .trim();
+              street,
+              city,
+            ].where((element) => element.isNotEmpty).join(', ').trim();
+
+        // Save the new address
+        await _saveNewAddress('Ubicación actual', street, city, coordinates);
+
         setState(() {
-          _deliveryAddress =
-              address.isNotEmpty ? address : 'Dirección no disponible';
+          _isLoadingLocation = false;
         });
       } else {
         setState(() {
           _deliveryAddress = 'No se pudo obtener la dirección';
+          _isLoadingLocation = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo obtener la dirección')),
+        );
       }
     } catch (e) {
       print('Location error: $e');
+      setState(() {
+        _deliveryAddress = 'Error al obtener la ubicación';
+        _isLoadingLocation = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al obtener la ubicación: $e')),
       );
-    } finally {
-      setState(() {
-        _isLoadingLocation = false;
-      });
     }
   }
 
   Future<void> _confirmOrder() async {
-    if (_deliveryAddress == 'Seleccionar ubicación' ||
-        _deliveryAddress == 'No se pudo obtener la dirección' ||
-        _deliveryAddress == 'Dirección no disponible') {
+    if (_deliveryAddress == 'Cargando direcciones...' ||
+        _deliveryAddress == 'Error al cargar direcciones' ||
+        _deliveryAddress == 'Error de autenticación' ||
+        _deliveryAddress == 'No hay direcciones guardadas') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Por favor seleccione una ubicación válida'),
@@ -175,24 +326,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       request.fields['delivery_address'] = _deliveryAddress;
       request.fields['notes'] = _note;
 
-      // Add payment receipt if QR and file selected
-      if (_paymentMethod == 'QR' && _paymentReceipt != null) {
-        request.files.add(
-          await http.MultipartFile.fromPath(
-            'payment_receipt',
-            _paymentReceipt!.path,
-            filename: _paymentReceipt!.path.split('/').last,
-          ),
-        );
-      }
-
       // Send request
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
       print('Checkout response: ${response.statusCode}, ${response.body}');
+
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = jsonDecode(response.body);
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -201,10 +342,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   orderNumber: data['order_number'] ?? 'UNKNOWN',
                   paymentMethod: _paymentMethod,
                   address: _deliveryAddress,
-                  total: _calculateSubtotal(), // Pass total
-                  orderItems: widget.cartItems, // Pass cart items
+                  total: _calculateSubtotal(),
+                  orderItems: widget.cartItems,
                 ),
           ),
+        );
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Por favor, inicia sesión nuevamente')),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -227,12 +372,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     required String price,
     int quantity = 1,
   }) {
-    // Prepend base URL to imageUrl
     final fullImageUrl =
         imageUrl != null && imageUrl.isNotEmpty
             ? '$baseUrl${imageUrl.startsWith('/') ? imageUrl : '/$imageUrl'}'
             : null;
-    print('Loading image URL: $fullImageUrl'); // Debug log
+    print('Loading image URL: $fullImageUrl');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16.0),
@@ -328,9 +472,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         onTap: () {
           setState(() {
             _paymentMethod = label;
-            if (label != 'QR') {
-              _paymentReceipt = null; // Clear receipt if not QR
-            }
           });
         },
         child: Container(
@@ -352,9 +493,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 onChanged: (value) {
                   setState(() {
                     _paymentMethod = value!;
-                    if (value != 'QR') {
-                      _paymentReceipt = null; // Clear receipt if not QR
-                    }
                   });
                 },
                 activeColor: Colors.orange,
@@ -369,6 +507,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
+    print('Building CheckoutScreen');
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -400,7 +539,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 const SizedBox(height: 24),
                 const Divider(),
                 _buildCostRow(
-                  'total parcial',
+                  'Total parcial',
                   '\$${_calculateSubtotal().toStringAsFixed(2)}',
                 ),
                 const SizedBox(height: 16),
@@ -415,33 +554,79 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: _isLoadingLocation ? null : _getCurrentLocation,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(10),
+                SizedBox(
+                  width: double.infinity,
+                  child: DropdownButtonFormField<String>(
+                    value:
+                        _savedAddresses.any(
+                              (addr) => addr['display'] == _deliveryAddress,
+                            )
+                            ? _deliveryAddress
+                            : null,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        _isLoadingLocation
-                            ? const CircularProgressIndicator()
-                            : const Icon(
-                              Icons.location_on,
-                              color: Colors.orange,
-                            ),
-                        const SizedBox(width: 8),
-                        Expanded(
+                    hint: Text(
+                      _isLoadingAddresses
+                          ? 'Cargando...'
+                          : 'Seleccione una dirección',
+                    ),
+                    isExpanded: true,
+                    items: [
+                      ..._savedAddresses.map((addr) {
+                        return DropdownMenuItem<String>(
+                          value: addr['display'],
                           child: Text(
-                            _deliveryAddress,
-                            style: const TextStyle(fontSize: 16),
+                            addr['display'],
                             overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
+                        );
+                      }),
+                      DropdownMenuItem<String>(
+                        value: 'current_location',
+                        child: Row(
+                          children: [
+                            _isLoadingLocation
+                                ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                                : const Icon(
+                                  Icons.location_on,
+                                  color: Colors.orange,
+                                  size: 16,
+                                ),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Usar ubicación actual',
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                          ],
                         ),
-                        const Icon(Icons.arrow_forward_ios, size: 16),
-                      ],
-                    ),
+                      ),
+                    ],
+                    onChanged: (value) async {
+                      if (value == 'current_location') {
+                        await _getCurrentLocation();
+                      } else if (value != null) {
+                        setState(() {
+                          _deliveryAddress = value;
+                        });
+                      }
+                    },
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -475,45 +660,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   children: [
                     _buildPaymentOption(
                       'Efectivo',
-                      'Efectivo' == _paymentMethod,
+                      _paymentMethod == 'Efectivo',
                     ),
                     const SizedBox(width: 16),
-                    _buildPaymentOption('QR', 'QR' == _paymentMethod),
+                    _buildPaymentOption('QR', _paymentMethod == 'QR'),
                   ],
                 ),
-                if (_paymentMethod == 'QR') ...[
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Subir comprobante de pago',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  GestureDetector(
-                    onTap: _pickPaymentReceipt,
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.upload_file, color: Colors.orange),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _paymentReceipt == null
-                                  ? 'Seleccionar comprobante'
-                                  : _paymentReceipt!.path.split('/').last,
-                              style: const TextStyle(fontSize: 16),
-                            ),
-                          ),
-                          const Icon(Icons.arrow_forward_ios, size: 16),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 32),
                 ElevatedButton(
                   onPressed: _confirmOrder,
@@ -552,7 +704,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           } else if (index == 1) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => ShopScreen()),
+              MaterialPageRoute(builder: (context) => ShopScreen(category: '')),
             );
           } else if (index == 4) {
             Navigator.pushReplacement(

@@ -26,8 +26,10 @@ class OrderSuccessScreen extends StatefulWidget {
   _OrderSuccessScreenState createState() => _OrderSuccessScreenState();
 }
 
-class _OrderSuccessScreenState extends State<OrderSuccessScreen> {
-  bool _autoNavigate = true;
+class _OrderSuccessScreenState extends State<OrderSuccessScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
@@ -39,22 +41,20 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen> {
       'total=${widget.total}, items=${widget.orderItems.length}',
     );
 
-    // Auto-navigate after 5 seconds if not cancelled
-    if (_autoNavigate) {
-      Future.delayed(const Duration(seconds: 5), () {
-        if (_autoNavigate && mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const ShopScreen()),
-          );
-        }
-      });
-    }
+    // Initialize animation
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    _animationController.forward();
   }
 
   @override
   void dispose() {
-    _autoNavigate = false; // Prevent navigation after dispose
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -67,9 +67,10 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen> {
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
@@ -81,12 +82,13 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen> {
               value,
               style: const TextStyle(
                 fontSize: 16,
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
               ),
               semanticsLabel: value,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
+              maxLines: 2,
             ),
           ),
         ],
@@ -100,19 +102,25 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen> {
     final quantity = item['quantity']?.toString() ?? '1';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(
+          Flexible(
             child: Text(
               '$quantity x $name',
-              style: const TextStyle(fontSize: 14),
+              style: const TextStyle(fontSize: 15, color: Colors.black87),
               semanticsLabel: '$quantity unidades de $name',
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           Text(
             price,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
             semanticsLabel: 'Precio $price',
           ),
         ],
@@ -124,145 +132,176 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final orderDateTime = _formatDateTime();
+    final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.grey[100],
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Success Icon with Animation
-              AnimatedScale(
-                scale: 1.0,
-                duration: const Duration(milliseconds: 500),
-                child: Semantics(
-                  label: 'Pedido confirmado',
-                  child: const Icon(
-                    Icons.check_circle,
-                    size: 100,
-                    color: Colors.green,
-                  ),
-                ),
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20.0,
+                vertical: 24.0,
               ),
-              const SizedBox(height: 16),
-              // Success Message
-              Semantics(
-                header: true,
-                child: Text(
-                  '¡Tu pedido ha sido\nrealizado con éxito!',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              // Order Details
-              Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Detalles del Pedido',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Success Icon
+                  AnimatedScale(
+                    scale: 1.0,
+                    duration: const Duration(milliseconds: 600),
+                    curve: Curves.easeOutBack,
+                    child: Semantics(
+                      label: 'Pedido confirmado',
+                      child: const Icon(
+                        Icons.check_circle,
+                        size: 120,
+                        color: Colors.green,
                       ),
-                      const SizedBox(height: 12),
-                      _buildDetailRow(
-                        'Número de pedido',
-                        widget.orderNumber.isNotEmpty
-                            ? widget.orderNumber
-                            : 'Desconocido',
-                      ),
-                      _buildDetailRow('Fecha y Hora', orderDateTime),
-                      _buildDetailRow('Método de pago', widget.paymentMethod),
-                      _buildDetailRow(
-                        'Dirección',
-                        widget.address.isNotEmpty
-                            ? widget.address
-                            : 'No especificada',
-                      ),
-                      _buildDetailRow(
-                        'Total',
-                        '\$${widget.total.toStringAsFixed(2)}',
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Artículos',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...widget.orderItems.map(_buildOrderItem),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Auto-Navigation Info
-              if (_autoNavigate)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      'Redirigiendo a la tienda en 5 segundos...',
-                      style: TextStyle(fontSize: 14, color: Colors.grey),
                     ),
-                    const SizedBox(width: 8),
-                    TextButton(
+                  ),
+                  const SizedBox(height: 20),
+                  // Success Message
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      '¡Tu pedido ha sido\nrealizado con éxito!',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  // Order Details Card
+                  Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: Colors.grey[200]!, width: 1),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Detalles del Pedido',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildDetailRow(
+                            'Número de pedido',
+                            widget.orderNumber.isNotEmpty
+                                ? widget.orderNumber
+                                : 'Desconocido',
+                          ),
+                          _buildDetailRow('Fecha y Hora', orderDateTime),
+                          _buildDetailRow(
+                            'Método de pago',
+                            widget.paymentMethod,
+                          ),
+                          _buildDetailRow(
+                            'Dirección',
+                            widget.address.isNotEmpty
+                                ? widget.address
+                                : 'No especificada',
+                          ),
+                          _buildDetailRow(
+                            'Total',
+                            '\$${widget.total.toStringAsFixed(2)}',
+                          ),
+                          const Divider(height: 32, thickness: 1),
+                          Text(
+                            'Artículos',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ...widget.orderItems.map(_buildOrderItem),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  // Navigation Buttons
+                  SizedBox(
+                    width: screenWidth * 0.9,
+                    child: ElevatedButton(
                       onPressed: () {
-                        setState(() {
-                          _autoNavigate = false;
-                        });
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => FoodHomeScreen(),
+                          ),
+                        );
                       },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 2,
+                      ),
                       child: const Text(
-                        'Cancelar',
-                        style: TextStyle(fontSize: 14, color: Colors.orange),
+                        'Volver a Inicio',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        semanticsLabel: 'Volver a la página de inicio',
                       ),
                     ),
-                  ],
-                ),
-              const SizedBox(height: 32),
-              // Back to Shop Button
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _autoNavigate = false;
-                  });
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (context) => const ShopScreen()),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(25),
                   ),
-                ),
-                child: const Text(
-                  'Volver a la tienda',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: screenWidth * 0.9,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ShopScreen(),
+                          ),
+                        );
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.orange,
+                        side: const BorderSide(color: Colors.orange, width: 2),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Volver a la Tienda',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        semanticsLabel: 'Volver a la tienda',
+                      ),
+                    ),
                   ),
-                  semanticsLabel: 'Volver a la tienda',
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

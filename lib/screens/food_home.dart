@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FoodHomeScreen extends StatefulWidget {
   @override
@@ -24,7 +25,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   late Animation<double> _fadeAnimation;
   TextEditingController _searchController = TextEditingController();
   bool _showSearch = false;
-  bool _hasShownLocationPopup = false;
   String _currentAddress = '123 Main St, Cityville';
   bool _isLoading = true;
   String? _errorMessage;
@@ -33,6 +33,8 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   bool _isSliderLoading = true;
   String? _sliderErrorMessage;
   final String baseUrl = 'https://remoto.digital'; // Base URL for the emulator
+  final bool useRealLocation = false; // Toggle for real vs. hardcoded location
+  String? _authToken; // Store the authentication token
 
   @override
   void initState() {
@@ -50,10 +52,23 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     _fetchCategories();
     _fetchSliders();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_hasShownLocationPopup) {
-        _showLocationPopup();
-        _hasShownLocationPopup = true;
+    // Load auth token and check location popup
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        // Load token (replace with your actual token retrieval logic)
+        _authToken = prefs.getString('auth_token');
+        print('Loaded auth token: $_authToken');
+        bool hasShownLocationPopup =
+            prefs.getBool('hasShownLocationPopup') ?? false;
+        if (!hasShownLocationPopup) {
+          _showLocationPopup();
+        }
+      } catch (e) {
+        print('Error checking SharedPreferences: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al verificar preferencias: $e')),
+        );
       }
     });
   }
@@ -73,24 +88,23 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
 
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/sliders'));
+      print('Sliders API response status: ${response.statusCode}');
+      print('Sliders API response body: ${response.body}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
+        final Map<String, dynamic> responseData = jsonDecode(response.body);
         if (responseData['status'] == 'success') {
           final List<dynamic> data = responseData['data'];
           setState(() {
             sliderItems =
                 data.map((slider) {
-                  // Check if the image is a full URL or a relative path
                   String imageUrl;
                   if (slider['image'].startsWith('http')) {
-                    // If it's a full URL, replace 127.0.0.1 with 10.0.2.2 for emulator access
                     imageUrl = slider['image'].replaceFirst(
                       'http://127.0.0.1:8000',
                       baseUrl,
                     );
                   } else {
-                    // If it's a relative path, prepend the base URL
                     imageUrl = '$baseUrl/${slider['image']}';
                   }
                   print('Slider Image URL: $imageUrl');
@@ -126,6 +140,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         });
       }
     } catch (e) {
+      print('Error fetching sliders: $e');
       setState(() {
         _sliderErrorMessage = 'Error de conexión: $e';
         _isSliderLoading = false;
@@ -141,9 +156,11 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
 
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/categories'));
+      print('Categories API response status: ${response.statusCode}');
+      print('Categories API response body: ${response.body}');
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
+        final List<dynamic> data = jsonDecode(response.body);
         setState(() {
           categories =
               data.map((category) {
@@ -155,8 +172,8 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                 String imageUrl = '$baseUrl/$imagePath';
                 print('Category Image URL: $imageUrl');
                 return {
-                  'category_id': category['id'].toString(), // Store category_id
-                  'name': category['name'], // Store name for display
+                  'category_id': category['id'].toString(),
+                  'name': category['name'],
                   'products': [
                     {'imageUrl': imageUrl, 'name': category['name']},
                   ],
@@ -172,10 +189,128 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         });
       }
     } catch (e) {
+      print('Error fetching categories: $e');
       setState(() {
         _errorMessage = 'Error de conexión: $e';
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _saveAddressToApi(
+    String label,
+    String street,
+    String city,
+    String coordinates,
+  ) async {
+    if (_authToken == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Por favor, inicia sesión para guardar la dirección'),
+        ),
+      );
+      // Optionally navigate to login screen
+      // Navigator.push(context, MaterialPageRoute(builder: (context) => LoginScreen()));
+      return;
+    }
+
+    try {
+      final requestBody = {
+        'label': label,
+        'street': street,
+        'city': city,
+        'coordinates': coordinates,
+        'is_default': true,
+      };
+      print('Saving address to API: $requestBody');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/addresses'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $_authToken',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      print('Addresses API response status: ${response.statusCode}');
+      print('AddressesCHER API response body: ${response.body}');
+
+      if (response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        setState(() {
+          _currentAddress =
+              '${responseData['address']['street']}, ${responseData['address']['city']}';
+        });
+        // Mark popup as shown
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('hasShownLocationPopup', true);
+        print('Address saved successfully: $_currentAddress');
+      } else if (response.statusCode == 302) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Redirección detectada. Por favor, verifica tu sesión',
+            ),
+          ),
+        );
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Sesión inválida. Por favor, inicia sesión nuevamente',
+            ),
+          ),
+        );
+        // Optionally clear token and navigate to login screen
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.remove('auth_token');
+        _authToken = null;
+        // Navigator.push(context, MaterialPageRoute(builder: (context) => LoginScreen()));
+      } else if (response.statusCode == 422) {
+        Map<String, dynamic> responseData;
+        try {
+          responseData = jsonDecode(response.body);
+          final errors = responseData['errors'] ?? {};
+          String errorMsg =
+              errors.isNotEmpty
+                  ? errors.entries
+                      .map((e) => '${e.key}: ${e.value.join(', ')}')
+                      .join('; ')
+                  : responseData['message'] ?? 'Validation error';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error de validación: $errorMsg')),
+          );
+        } catch (e) {
+          print('Error decoding validation response: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al procesar la respuesta del servidor'),
+            ),
+          );
+        }
+      } else {
+        Map<String, dynamic> responseData;
+        try {
+          responseData = jsonDecode(response.body);
+        } catch (e) {
+          responseData = {};
+          print('Error decoding API response: $e');
+        }
+        final errorMsg =
+            responseData['message'] ?? 'Status code: ${response.statusCode}';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al guardar la dirección: $errorMsg')),
+        );
+      }
+    } catch (e) {
+      print('Error saving address to API: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error de conexión al guardar la dirección: $e'),
+        ),
+      );
     }
   }
 
@@ -232,60 +367,71 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     }
   }
 
-  Future<Position?> _getUserLocation() async {
-    var permissionStatus = await Permission.location.request();
-    if (permissionStatus.isGranted) {
-      try {
-        Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        );
-        return position;
-      } catch (e) {
+  Future<Map<String, dynamic>?> _getUserLocationData() async {
+    if (useRealLocation) {
+      // Future implementation with real location
+      var permissionStatus = await Permission.location.request();
+      if (permissionStatus.isGranted) {
+        try {
+          Position position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+          );
+          List<Placemark> placemarks = await placemarkFromCoordinates(
+            position.latitude,
+            position.longitude,
+          );
+          Placemark place = placemarks[0];
+          String address =
+              '${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}';
+          return {
+            'street': place.street ?? 'Unknown Street',
+            'city': place.locality ?? 'Unknown City',
+            'coordinates': '${position.latitude},${position.longitude}',
+            'address': address,
+          };
+        } catch (e) {
+          print('Error getting real location: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al obtener la ubicación: $e')),
+          );
+          return null;
+        }
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al obtener la ubicación: $e')),
+          SnackBar(content: Text('Permiso de ubicación denegado')),
         );
         return null;
       }
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Permiso de ubicación denegado')));
-      return null;
-    }
-  }
-
-  Future<String> _getAddressFromCoordinates(
-    double latitude,
-    double longitude,
-  ) async {
-    try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        latitude,
-        longitude,
-      );
-      Placemark place = placemarks[0];
-      return '${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}';
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo obtener la dirección: $e')),
-      );
-      return 'Dirección no disponible';
+      // Hardcoded location data
+      print('Using hardcoded location data');
+      return {
+        'street': '123 Main Street',
+        'city': 'Cityville',
+        'coordinates':
+            '40.7128,-74.0060', // Example coordinates (New York City)
+        'address': '123 Main Street, Cityville',
+      };
     }
   }
 
   Future<void> _shareLocationViaWhatsApp(
-    double latitude,
-    double longitude,
     String address,
+    String coordinates,
   ) async {
-    String googleMapsLink =
-        'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
-    String message =
-        'Hola, aquí está mi ubicación para el envío:\n$address\n$googleMapsLink';
-    String whatsappUrl = 'whatsapp://send?text=${Uri.encodeFull(message)}';
-    String fallbackUrl = 'https://wa.me/?text=${Uri.encodeFull(message)}';
-
     try {
+      List<String> coords = coordinates.split(',');
+      double latitude = double.parse(coords[0]);
+      double longitude = double.parse(coords[1]);
+      String googleMapsLink =
+          'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+      String message =
+          'Hola, aquí está mi ubicación para el envío:\n$address\n$googleMapsLink';
+      String whatsappUrl = 'whatsapp://send?text=${Uri.encodeFull(message)}';
+      String fallbackUrl = 'https://wa.me/?text=${Uri.encodeFull(message)}';
+
+      print('Attempting to share location via WhatsApp: $message');
+
       if (await canLaunchUrl(Uri.parse(whatsappUrl))) {
         await launchUrl(
           Uri.parse(whatsappUrl),
@@ -300,6 +446,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         throw 'No se pudo abrir WhatsApp ni el navegador.';
       }
     } catch (e) {
+      print('Error sharing location via WhatsApp: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -349,8 +496,19 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
+              onPressed: () async {
+                try {
+                  SharedPreferences prefs =
+                      await SharedPreferences.getInstance();
+                  await prefs.setBool('hasShownLocationPopup', true);
+                  print('Location popup dismissed, flag set to true');
+                  Navigator.of(context).pop();
+                } catch (e) {
+                  print('Error setting SharedPreferences: $e');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error al cerrar el popup: $e')),
+                  );
+                }
               },
               child: Text(
                 'X',
@@ -364,22 +522,30 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
             ElevatedButton(
               onPressed: () async {
                 try {
-                  Position? position = await _getUserLocation();
-                  if (position != null) {
-                    String address = await _getAddressFromCoordinates(
-                      position.latitude,
-                      position.longitude,
+                  Map<String, dynamic>? locationData =
+                      await _getUserLocationData();
+                  if (locationData != null) {
+                    // Save address to API
+                    await _saveAddressToApi(
+                      'Home',
+                      locationData['street'],
+                      locationData['city'],
+                      locationData['coordinates'],
                     );
-                    setState(() {
-                      _currentAddress = address;
-                    });
+                    // Share via WhatsApp
                     await _shareLocationViaWhatsApp(
-                      position.latitude,
-                      position.longitude,
-                      address,
+                      locationData['address'],
+                      locationData['coordinates'],
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('No se pudo obtener la ubicación'),
+                      ),
                     );
                   }
                 } catch (e) {
+                  print('Error in location popup action: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('Error al activar la ubicación: $e'),
