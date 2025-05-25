@@ -29,10 +29,11 @@ class _ShopScreenState extends State<ShopScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _showSearch = false;
   final ScrollController _scrollController = ScrollController();
-  String _categoryName = '';
+  String _categoryName = 'Productos';
   static const String baseUrl = 'https://remoto.digital';
   List<String> _dynamicTabs = [];
   Map<String, String> _categoryMapping = {};
+  int _initialTabIndex = 0;
 
   @override
   void initState() {
@@ -67,24 +68,24 @@ class _ShopScreenState extends State<ShopScreen> {
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
           setState(() {
-            _categoryName = data['name'] ?? widget.category ?? 'Tienda';
+            _categoryName = data['name'] ?? 'Categoría ${widget.category}';
             print('Category name fetched: $_categoryName');
           });
         } else {
           setState(() {
-            _categoryName = widget.category ?? 'Tienda';
+            _categoryName = 'Categoría ${widget.category}';
             print('Category name fallback: $_categoryName');
           });
         }
       } catch (e) {
         setState(() {
-          _categoryName = widget.category ?? 'Tienda';
+          _categoryName = 'Categoría ${widget.category}';
           print('Error fetching category name: $e');
         });
       }
     } else {
       setState(() {
-        _categoryName = 'Tienda';
+        _categoryName = 'Productos';
         print('No category provided, using default: $_categoryName');
       });
     }
@@ -102,52 +103,78 @@ class _ShopScreenState extends State<ShopScreen> {
           _dynamicTabs = [];
           _categoryMapping = {};
 
+          // First, find the selected category (if any)
+          Map<String, dynamic>? selectedCategory;
           if (widget.category != null && widget.category!.isNotEmpty) {
-            // If a main category is specified, only add the matching category
-            for (var category in data) {
-              String categoryName = category['name'];
-              String categoryId = category['id'].toString();
-              if (categoryId == widget.category) {
-                _dynamicTabs.add(categoryName);
-                _categoryMapping[categoryName] = categoryId;
-              }
-            }
-            if (_dynamicTabs.isEmpty) {
-              // Fallback if no matching category is found
-              _dynamicTabs.add(_categoryName);
-              _categoryMapping[_categoryName] = widget.category!;
-              print('No matching categories, using fallback: $_categoryName');
-            }
-          } else {
-            // If no main category, add all categories
-            for (var category in data) {
-              String categoryName = category['name'];
-              String categoryId = category['id'].toString();
+            selectedCategory = data.firstWhere(
+              (category) => category['id'].toString() == widget.category,
+              orElse: () => null,
+            );
+            if (selectedCategory != null) {
+              String categoryName = selectedCategory['name'];
               _dynamicTabs.add(categoryName);
-              _categoryMapping[categoryName] = categoryId;
-            }
-            if (_dynamicTabs.isEmpty) {
-              _dynamicTabs.add('Tienda');
-              _categoryMapping['Tienda'] = 'Tienda';
-              print('No categories found, using default: Tienda');
+              _categoryMapping[categoryName] = widget.category!;
+              print('Added selected category first: $categoryName');
             }
           }
 
+          // Add remaining categories
+          for (var category in data) {
+            String categoryId = category['id'].toString();
+            String categoryName = category['name'];
+            if (categoryId != widget.category) {
+              _dynamicTabs.add(categoryName);
+              _categoryMapping[categoryName] = categoryId;
+            }
+          }
+
+          // If no categories found, show empty state
+          if (_dynamicTabs.isEmpty) {
+            if (widget.category != null && widget.category!.isNotEmpty) {
+              _dynamicTabs.add(_categoryName);
+              _categoryMapping[_categoryName] = widget.category!;
+              print(
+                'No categories found, added selected category: $_categoryName',
+              );
+            } else {
+              print(
+                'No categories available and no specific category provided',
+              );
+              // Will show empty state in UI
+            }
+          }
+
+          _initialTabIndex = 0;
           print('Dynamic tabs: $_dynamicTabs');
           print('Category mapping: $_categoryMapping');
+          print('Initial tab index: $_initialTabIndex');
         });
       } else {
         print('Failed to fetch categories: ${response.statusCode}');
         setState(() {
-          _dynamicTabs = [_categoryName];
-          _categoryMapping = {_categoryName: widget.category ?? _categoryName};
+          if (widget.category != null && widget.category!.isNotEmpty) {
+            _dynamicTabs = [_categoryName];
+            _categoryMapping = {_categoryName: widget.category!};
+            _initialTabIndex = 0;
+          } else {
+            _dynamicTabs = [];
+            _categoryMapping = {};
+            _initialTabIndex = 0;
+          }
         });
       }
     } catch (e) {
       print('Error fetching categories: $e');
       setState(() {
-        _dynamicTabs = [_categoryName];
-        _categoryMapping = {_categoryName: widget.category ?? _categoryName};
+        if (widget.category != null && widget.category!.isNotEmpty) {
+          _dynamicTabs = [_categoryName];
+          _categoryMapping = {_categoryName: widget.category!};
+          _initialTabIndex = 0;
+        } else {
+          _dynamicTabs = [];
+          _categoryMapping = {};
+          _initialTabIndex = 0;
+        }
       });
     }
   }
@@ -430,26 +457,11 @@ class _ShopScreenState extends State<ShopScreen> {
 
     List<Map<String, dynamic>> filteredProducts = productMaps;
 
-    // If widget.category is specified, filter by the main category
-    if (widget.category != null && widget.category!.isNotEmpty) {
+    // Apply category filter for the selected tab
+    final tabCategoryId = _categoryMapping[tabCategory];
+    if (tabCategoryId != null) {
       filteredProducts =
           productMaps.where((item) {
-            return item['category_id'].toString() == widget.category;
-          }).toList();
-      print(
-        'Applied main category filter (ID: ${widget.category}): $filteredProducts',
-      );
-    }
-
-    // If we have only one tab or widget.category matches the tab, no further filtering is needed
-    final tabCategoryId = _categoryMapping[tabCategory];
-    if (_dynamicTabs.length > 1 &&
-        tabCategoryId != null &&
-        tabCategoryId.isNotEmpty &&
-        tabCategoryId != 'Tienda' &&
-        (widget.category == null || widget.category != tabCategoryId)) {
-      filteredProducts =
-          filteredProducts.where((item) {
             return item['category_id'].toString() == tabCategoryId;
           }).toList();
       print(
@@ -464,6 +476,7 @@ class _ShopScreenState extends State<ShopScreen> {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: _dynamicTabs.length,
+      initialIndex: _initialTabIndex,
       child: Builder(
         builder: (context) {
           final TabController tabController = DefaultTabController.of(context);
@@ -471,6 +484,10 @@ class _ShopScreenState extends State<ShopScreen> {
             if (!tabController.indexIsChanging) {
               final selectedTab = _dynamicTabs[tabController.index];
               print('Tab changed to $selectedTab');
+              final categoryId = _categoryMapping[selectedTab];
+              context.read<ProductBloc>().add(
+                FetchProducts(category: categoryId),
+              );
             }
           });
           return Scaffold(
@@ -494,7 +511,7 @@ class _ShopScreenState extends State<ShopScreen> {
                         onSubmitted: (_) => _performSearch(),
                       )
                       : Text(
-                        _categoryName.isNotEmpty ? _categoryName : 'Tienda',
+                        _categoryName,
                         style: const TextStyle(
                           color: Colors.black87,
                           fontWeight: FontWeight.bold,
@@ -564,8 +581,9 @@ class _ShopScreenState extends State<ShopScreen> {
                         ),
                       ],
               bottom:
-                  _dynamicTabs.length > 1
+                  _dynamicTabs.isNotEmpty
                       ? TabBar(
+                        isScrollable: true,
                         labelColor: Colors.orange,
                         unselectedLabelColor: Colors.grey,
                         indicatorColor: Colors.orange,
@@ -590,7 +608,7 @@ class _ShopScreenState extends State<ShopScreen> {
                       return Future.delayed(const Duration(seconds: 1));
                     },
                     child:
-                        _dynamicTabs.length > 1
+                        _dynamicTabs.isNotEmpty
                             ? TabBarView(
                               children:
                                   _dynamicTabs
@@ -599,20 +617,11 @@ class _ShopScreenState extends State<ShopScreen> {
                                       )
                                       .toList(),
                             )
-                            : _buildTabContent(
-                              _dynamicTabs.isNotEmpty
-                                  ? _dynamicTabs[0]
-                                  : _categoryName,
-                              state,
-                            ),
+                            : _buildEmptyState(),
                   );
                 }
-                print('No products available for $_categoryName');
-                return Center(
-                  child: Text(
-                    'No hay productos disponibles para $_categoryName',
-                  ),
-                );
+                print('No products available');
+                return _buildEmptyState();
               },
             ),
             bottomNavigationBar: BottomNavigationBar(
@@ -667,9 +676,7 @@ class _ShopScreenState extends State<ShopScreen> {
     if (filteredItems.isEmpty) {
       print('No filtered items for tab: $tabCategory');
       return Center(
-        child: Text(
-          'No hay productos disponibles para $tabCategory${_categoryName.isNotEmpty && _categoryName != 'Tienda' ? ' ($_categoryName)' : ''}',
-        ),
+        child: Text('No hay productos disponibles para $tabCategory'),
       );
     }
     print('Rendering ${filteredItems.length} items for tab: $tabCategory');
@@ -813,6 +820,39 @@ class _ShopScreenState extends State<ShopScreen> {
           const SizedBox(height: 20),
           ElevatedButton(
             onPressed: _loadInitialProducts,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            child: const Text(
+              'Reintentar',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.store, size: 80, color: Colors.grey),
+          const SizedBox(height: 16),
+          const Text(
+            'No hay categorías disponibles',
+            style: TextStyle(fontSize: 18, color: Colors.grey),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () {
+              _fetchCategories();
+              _loadInitialProducts();
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               shape: RoundedRectangleBorder(

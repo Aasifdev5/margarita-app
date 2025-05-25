@@ -25,16 +25,20 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   late Animation<double> _fadeAnimation;
   TextEditingController _searchController = TextEditingController();
   bool _showSearch = false;
-  String _currentAddress = '123 Main St, Cityville';
+  String _currentAddress = 'Obteniendo ubicación...';
+  bool _isLoadingLocation = false;
   bool _isLoading = true;
   String? _errorMessage;
   List<Map<String, dynamic>> categories = [];
   List<Map<String, dynamic>> sliderItems = [];
   bool _isSliderLoading = true;
   String? _sliderErrorMessage;
-  final String baseUrl = 'https://remoto.digital'; // Base URL for the emulator
-  final bool useRealLocation = false; // Toggle for real vs. hardcoded location
-  String? _authToken; // Store the authentication token
+  List<Map<String, dynamic>> _savedAddresses = [];
+  final String baseUrl = 'https://remoto.digital';
+  final bool useRealLocation = true;
+  String? _authToken;
+  TextEditingController _deliveryInstructionsController =
+      TextEditingController();
 
   @override
   void initState() {
@@ -48,27 +52,27 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     );
     _animationController.forward();
 
-    // Fetch categories and sliders from API
     _fetchCategories();
     _fetchSliders();
 
-    // Load auth token and check location popup
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         SharedPreferences prefs = await SharedPreferences.getInstance();
-        // Load token (replace with your actual token retrieval logic)
         _authToken = prefs.getString('auth_token');
         print('Loaded auth token: $_authToken');
+        await _fetchSavedAddresses();
         bool hasShownLocationPopup =
             prefs.getBool('hasShownLocationPopup') ?? false;
         if (!hasShownLocationPopup) {
           _showLocationPopup();
+        } else {
+          await _updateCurrentLocation();
         }
       } catch (e) {
-        print('Error checking SharedPreferences: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al verificar preferencias: $e')),
-        );
+        print('Error initializing: $e');
+        setState(() {
+          _currentAddress = 'Error al obtener ubicación';
+        });
       }
     });
   }
@@ -77,6 +81,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   void dispose() {
     _animationController.dispose();
     _searchController.dispose();
+    _deliveryInstructionsController.dispose();
     super.dispose();
   }
 
@@ -98,15 +103,13 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
           setState(() {
             sliderItems =
                 data.map((slider) {
-                  String imageUrl;
-                  if (slider['image'].startsWith('http')) {
-                    imageUrl = slider['image'].replaceFirst(
-                      'http://127.0.0.1:8000',
-                      baseUrl,
-                    );
-                  } else {
-                    imageUrl = '$baseUrl/${slider['image']}';
-                  }
+                  String imageUrl =
+                      slider['image'].startsWith('http')
+                          ? slider['image'].replaceFirst(
+                            'http://127.0.0.1:8000',
+                            baseUrl,
+                          )
+                          : '$baseUrl/${slider['image']}';
                   print('Slider Image URL: $imageUrl');
                   return {
                     'imageUrl': imageUrl,
@@ -164,11 +167,10 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         setState(() {
           categories =
               data.map((category) {
-                String imagePath = category['image'];
-                if (imagePath.contains('storage/')) {
-                  print('Warning: Image path contains /storage/: $imagePath');
-                  imagePath = imagePath.replaceFirst('storage/', '');
-                }
+                String imagePath = category['image'].replaceFirst(
+                  'storage/',
+                  '',
+                );
                 String imageUrl = '$baseUrl/$imagePath';
                 print('Category Image URL: $imageUrl');
                 return {
@@ -197,20 +199,59 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     }
   }
 
+  Future<void> _fetchSavedAddresses() async {
+    if (_authToken == null) return;
+
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/addresses'),
+        headers: {
+          'Authorization': 'Bearer $_authToken',
+          'Accept': 'application/json',
+        },
+      );
+
+      print('Addresses API response: ${response.statusCode}, ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List<dynamic> addresses = data['addresses'] ?? [];
+        setState(() {
+          _savedAddresses =
+              addresses.map((addr) {
+                return {
+                  'id': addr['id'].toString(),
+                  'label': addr['label'],
+                  'street': addr['street'],
+                  'city': addr['city'],
+                  'coordinates': addr['coordinates'],
+                  'is_default': addr['is_default'] ?? false,
+                  'display':
+                      '${addr['label']}: ${addr['street']}, ${addr['city']}',
+                };
+              }).toList();
+        });
+      } else {
+        print('Failed to fetch addresses: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching addresses: $e');
+    }
+  }
+
   Future<void> _saveAddressToApi(
     String label,
     String street,
     String city,
     String coordinates,
+    String? instructions,
   ) async {
     if (_authToken == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Por favor, inicia sesión para guardar la dirección'),
         ),
       );
-      // Optionally navigate to login screen
-      // Navigator.push(context, MaterialPageRoute(builder: (context) => LoginScreen()));
       return;
     }
 
@@ -221,6 +262,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         'city': city,
         'coordinates': coordinates,
         'is_default': true,
+        'instructions': instructions ?? '',
       };
       print('Saving address to API: $requestBody');
 
@@ -235,74 +277,49 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       );
 
       print('Addresses API response status: ${response.statusCode}');
-      print('AddressesCHER API response body: ${response.body}');
+      print('Addresses API response body: ${response.body}');
 
       if (response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
+        final newAddress = responseData['address'];
         setState(() {
-          _currentAddress =
-              '${responseData['address']['street']}, ${responseData['address']['city']}';
+          _currentAddress = '${newAddress['street']}, ${newAddress['city']}';
+          _savedAddresses.add({
+            'id': newAddress['id'].toString(),
+            'label': newAddress['label'],
+            'street': newAddress['street'],
+            'city': newAddress['city'],
+            'coordinates': newAddress['coordinates'],
+            'is_default': newAddress['is_default'] ?? false,
+            'display':
+                '${newAddress['label']}: ${newAddress['street']}, ${newAddress['city']}',
+          });
         });
-        // Mark popup as shown
         SharedPreferences prefs = await SharedPreferences.getInstance();
         await prefs.setBool('hasShownLocationPopup', true);
+        await prefs.setString('lastAddress', _currentAddress);
         print('Address saved successfully: $_currentAddress');
-      } else if (response.statusCode == 302) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Redirección detectada. Por favor, verifica tu sesión',
-            ),
-          ),
-        );
-      } else if (response.statusCode == 401 || response.statusCode == 403) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Sesión inválida. Por favor, inicia sesión nuevamente',
-            ),
-          ),
-        );
-        // Optionally clear token and navigate to login screen
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.remove('auth_token');
-        _authToken = null;
-        // Navigator.push(context, MaterialPageRoute(builder: (context) => LoginScreen()));
-      } else if (response.statusCode == 422) {
-        Map<String, dynamic> responseData;
-        try {
-          responseData = jsonDecode(response.body);
+      } else {
+        String errorMsg =
+            'Error al guardar la dirección: ${response.statusCode}';
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          errorMsg = 'Sesión inválida. Por favor, inicia sesión nuevamente';
+          SharedPreferences prefs = await SharedPreferences.getInstance();
+          await prefs.remove('auth_token');
+          _authToken = null;
+        } else if (response.statusCode == 422) {
+          final responseData = jsonDecode(response.body);
           final errors = responseData['errors'] ?? {};
-          String errorMsg =
+          errorMsg =
               errors.isNotEmpty
                   ? errors.entries
                       .map((e) => '${e.key}: ${e.value.join(', ')}')
                       .join('; ')
                   : responseData['message'] ?? 'Validation error';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error de validación: $errorMsg')),
-          );
-        } catch (e) {
-          print('Error decoding validation response: $e');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error al procesar la respuesta del servidor'),
-            ),
-          );
         }
-      } else {
-        Map<String, dynamic> responseData;
-        try {
-          responseData = jsonDecode(response.body);
-        } catch (e) {
-          responseData = {};
-          print('Error decoding API response: $e');
-        }
-        final errorMsg =
-            responseData['message'] ?? 'Status code: ${response.statusCode}';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar la dirección: $errorMsg')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMsg)));
       }
     } catch (e) {
       print('Error saving address to API: $e');
@@ -311,6 +328,46 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
           content: Text('Error de conexión al guardar la dirección: $e'),
         ),
       );
+    }
+  }
+
+  Future<void> _updateCurrentLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    try {
+      Map<String, dynamic>? locationData = await _getUserLocationData();
+      if (locationData != null) {
+        setState(() {
+          _currentAddress = locationData['address'];
+        });
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('lastAddress', _currentAddress);
+      } else if (_savedAddresses.isNotEmpty) {
+        final defaultAddress = _savedAddresses.firstWhere(
+          (addr) => addr['is_default'] == true,
+          orElse: () => _savedAddresses.first,
+        );
+        setState(() {
+          _currentAddress = defaultAddress['display'];
+        });
+      } else {
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        setState(() {
+          _currentAddress =
+              prefs.getString('lastAddress') ?? 'Selecciona una ubicación';
+        });
+      }
+    } catch (e) {
+      print('Error updating location: $e');
+      setState(() {
+        _currentAddress = 'Error al obtener ubicación';
+      });
+    } finally {
+      setState(() {
+        _isLoadingLocation = false;
+      });
     }
   }
 
@@ -362,62 +419,119 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Por favor, ingresa un término de búsqueda')),
+        const SnackBar(
+          content: Text('Por favor, ingresa un término de búsqueda'),
+        ),
       );
     }
   }
 
   Future<Map<String, dynamic>?> _getUserLocationData() async {
-    if (useRealLocation) {
-      // Future implementation with real location
-      var permissionStatus = await Permission.location.request();
-      if (permissionStatus.isGranted) {
-        try {
-          Position position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high,
-          );
-          List<Placemark> placemarks = await placemarkFromCoordinates(
-            position.latitude,
-            position.longitude,
-          );
-          Placemark place = placemarks[0];
-          String address =
-              '${place.street}, ${place.locality}, ${place.postalCode}, ${place.country}';
-          return {
-            'street': place.street ?? 'Unknown Street',
-            'city': place.locality ?? 'Unknown City',
-            'coordinates': '${position.latitude},${position.longitude}',
-            'address': address,
-          };
-        } catch (e) {
-          print('Error getting real location: $e');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al obtener la ubicación: $e')),
-          );
-          return null;
-        }
-      } else {
+    if (!useRealLocation) {
+      print('Error: Real location is disabled');
+      return null;
+    }
+
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Por favor, habilita los servicios de ubicación'),
+          action: SnackBarAction(
+            label: 'Configuración',
+            onPressed: () => openAppSettings(),
+          ),
+        ),
+      );
+      return null;
+    }
+
+    var permissionStatus = await Permission.location.status;
+    if (permissionStatus.isDenied) {
+      permissionStatus = await Permission.location.request();
+      if (permissionStatus.isDenied) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Permiso de ubicación denegado')),
+          SnackBar(
+            content: const Text('Permiso de ubicación denegado'),
+            action: SnackBarAction(
+              label: 'Configuración',
+              onPressed: () => openAppSettings(),
+            ),
+          ),
         );
         return null;
       }
-    } else {
-      // Hardcoded location data
-      print('Using hardcoded location data');
+    }
+    if (permissionStatus.isPermanentlyDenied) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Permiso de ubicación denegado permanentemente'),
+          action: SnackBarAction(
+            label: 'Configuración',
+            onPressed: () => openAppSettings(),
+          ),
+        ),
+      );
+      return null;
+    }
+
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      Placemark place = placemarks.isNotEmpty ? placemarks[0] : Placemark();
+      String street = place.street ?? 'Calle desconocida';
+      String city = place.locality ?? 'Ciudad desconocida';
+      String subLocality = place.subLocality ?? '';
+      String postalCode = place.postalCode ?? '';
+      String country = place.country ?? '';
+      String name = place.name ?? '';
+
+      // Construct detailed address for street and display
+      List<String> addressParts = [];
+      if (name.isNotEmpty && name != street && name != subLocality)
+        addressParts.add(name);
+      if (street.isNotEmpty) addressParts.add(street);
+      if (subLocality.isNotEmpty) addressParts.add(subLocality);
+      String fullStreetAddress = addressParts.join(',').trim();
+      if (fullStreetAddress.isEmpty)
+        fullStreetAddress = 'Dirección desconocida';
+
+      // Full address for display (includes city, postal code, country)
+      List<String> displayAddressParts = List.from(addressParts);
+      if (city.isNotEmpty) displayAddressParts.add(city);
+      if (postalCode.isNotEmpty) displayAddressParts.add(postalCode);
+      if (country.isNotEmpty) displayAddressParts.add(country);
+      String address = displayAddressParts.join(', ').trim();
+      if (address.isEmpty) address = 'Ubicación desconocida';
+
       return {
-        'street': '123 Main Street',
-        'city': 'Cityville',
-        'coordinates':
-            '40.7128,-74.0060', // Example coordinates (New York City)
-        'address': '123 Main Street, Cityville',
+        'street': fullStreetAddress,
+        'city': city,
+        'coordinates': '${position.latitude},${position.longitude}',
+        'address': address,
+        'subLocality': subLocality,
+        'postalCode': postalCode,
+        'country': country,
+        'name': name,
       };
+    } catch (e) {
+      print('Error getting real location: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al obtener la ubicación: $e')),
+      );
+      return null;
     }
   }
 
   Future<void> _shareLocationViaWhatsApp(
     String address,
     String coordinates,
+    String? instructions,
   ) async {
     try {
       List<String> coords = coordinates.split(',');
@@ -426,7 +540,11 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       String googleMapsLink =
           'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
       String message =
-          'Hola, aquí está mi ubicación para el envío:\n$address\n$googleMapsLink';
+          'Hola, aquí está mi ubicación para el envío:\n$address\n';
+      if (instructions != null && instructions.isNotEmpty) {
+        message += 'Instrucciones de entrega: $instructions\n';
+      }
+      message += googleMapsLink;
       String whatsappUrl = 'whatsapp://send?text=${Uri.encodeFull(message)}';
       String fallbackUrl = 'https://wa.me/?text=${Uri.encodeFull(message)}';
 
@@ -448,9 +566,9 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     } catch (e) {
       print('Error sharing location via WhatsApp: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
-            'Error al intentar abrir WhatsApp. Asegúrate de tener WhatsApp instalado.',
+            'Error al abrir WhatsApp. Asegúrate de tener WhatsApp instalado.',
           ),
         ),
       );
@@ -458,6 +576,14 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   }
 
   void _showLocationPopup() {
+    String? selectedAddressId =
+        _savedAddresses.isNotEmpty
+            ? _savedAddresses.firstWhere(
+              (addr) => addr['is_default'] == true,
+              orElse: () => _savedAddresses.first,
+            )['id']
+            : null;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -466,113 +592,207 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          backgroundColor: Colors.orange,
-          content: Row(
-            children: [
-              Icon(Icons.location_on, color: Colors.white, size: 30),
-              SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ACTIVA TU UBICACIÓN',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+          backgroundColor: Colors.white,
+          title: const Text(
+            'Configura tu ubicación',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Necesitamos tu ubicación para entregarte tu pedido de forma rápida y precisa.',
+                  style: TextStyle(fontSize: 14, color: Colors.black87),
+                ),
+                const SizedBox(height: 16),
+                if (_savedAddresses.isNotEmpty) ...[
+                  const Text(
+                    'Selecciona una dirección guardada:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: selectedAddressId,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
                       ),
                     ),
-                    SizedBox(height: 5),
-                    Text(
-                      'Comparte tu ubicación para realizar el envío',
-                      style: TextStyle(color: Colors.white, fontSize: 14),
-                    ),
-                  ],
+                    items:
+                        _savedAddresses.map((addr) {
+                          return DropdownMenuItem<String>(
+                            value: addr['id'],
+                            child: Text(
+                              addr['display'],
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          );
+                        }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        selectedAddressId = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                const Text(
+                  'O usa tu ubicación actual:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed:
+                      _isLoadingLocation
+                          ? null
+                          : () async {
+                            Navigator.of(context).pop();
+                            await _captureAndConfirmLocation();
+                          },
+                  icon:
+                      _isLoadingLocation
+                          ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                          : const Icon(Icons.location_on),
+                  label: const Text('Obtener ubicación actual'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 40),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _deliveryInstructionsController,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    labelText: 'Instrucciones de entrega (opcional)',
+                    hintText: 'Ej. Dejar en recepción, entrar por puerta B',
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () async {
-                try {
-                  SharedPreferences prefs =
-                      await SharedPreferences.getInstance();
-                  await prefs.setBool('hasShownLocationPopup', true);
-                  print('Location popup dismissed, flag set to true');
-                  Navigator.of(context).pop();
-                } catch (e) {
-                  print('Error setting SharedPreferences: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error al cerrar el popup: $e')),
-                  );
-                }
+                SharedPreferences prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('hasShownLocationPopup', true);
+                Navigator.of(context).pop();
+                await _updateCurrentLocation();
               },
-              child: Text(
-                'X',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
-              onPressed: () async {
-                try {
-                  Map<String, dynamic>? locationData =
-                      await _getUserLocationData();
-                  if (locationData != null) {
-                    // Save address to API
-                    await _saveAddressToApi(
-                      'Home',
-                      locationData['street'],
-                      locationData['city'],
-                      locationData['coordinates'],
-                    );
-                    // Share via WhatsApp
-                    await _shareLocationViaWhatsApp(
-                      locationData['address'],
-                      locationData['coordinates'],
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('No se pudo obtener la ubicación'),
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  print('Error in location popup action: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error al activar la ubicación: $e'),
-                    ),
-                  );
-                } finally {
-                  Navigator.of(context).pop();
-                }
-              },
-              child: Text(
-                'Activar',
-                style: TextStyle(
-                  color: Colors.orange,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              onPressed:
+                  selectedAddressId != null
+                      ? () async {
+                        final selectedAddress = _savedAddresses.firstWhere(
+                          (addr) => addr['id'] == selectedAddressId,
+                        );
+                        setState(() {
+                          _currentAddress = selectedAddress['display'];
+                        });
+                        SharedPreferences prefs =
+                            await SharedPreferences.getInstance();
+                        await prefs.setBool('hasShownLocationPopup', true);
+                        await prefs.setString('lastAddress', _currentAddress);
+                        Navigator.of(context).pop();
+                      }
+                      : null,
+              child: const Text('Usar dirección seleccionada'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
               ),
             ),
           ],
         );
       },
     );
+  }
+
+  Future<void> _captureAndConfirmLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    try {
+      Map<String, dynamic>? locationData = await _getUserLocationData();
+      if (locationData != null) {
+        bool? confirmed = await showDialog<bool>(
+          context: context,
+          builder:
+              (context) => AlertDialog(
+                title: const Text('Confirma tu ubicación'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Dirección detectada: ${locationData['address']}'),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _deliveryInstructionsController,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: 'Instrucciones de entrega (opcional)',
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancelar'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Confirmar'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+        );
+
+        if (confirmed == true) {
+          await _saveAddressToApi(
+            'Home',
+            locationData['street'], // Use full street address (e.g., "86CC+RR3,industrial,burhanpur")
+            locationData['city'],
+            locationData['coordinates'],
+            _deliveryInstructionsController.text,
+          );
+          await _shareLocationViaWhatsApp(
+            locationData['address'],
+            locationData['coordinates'],
+            _deliveryInstructionsController.text,
+          );
+          setState(() {
+            _currentAddress = locationData['address'];
+          });
+        }
+      }
+    } catch (e) {
+      print('Error capturing location: $e');
+    } finally {
+      setState(() {
+        _isLoadingLocation = false;
+      });
+      _deliveryInstructionsController.clear();
+    }
   }
 
   @override
@@ -592,7 +812,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                     hintText: 'Buscar comida...',
                     border: InputBorder.none,
                     suffixIcon: IconButton(
-                      icon: Icon(Icons.close),
+                      icon: const Icon(Icons.close),
                       onPressed: _toggleSearch,
                     ),
                   ),
@@ -602,8 +822,12 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                   onTap: _showLocationPopup,
                   child: Row(
                     children: [
-                      Icon(Icons.location_on, color: Colors.orange, size: 24),
-                      SizedBox(width: 8),
+                      const Icon(
+                        Icons.location_on,
+                        color: Colors.orange,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -616,24 +840,46 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
-                            Text(
-                              _currentAddress,
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.black87,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _currentAddress,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.black87,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (_isLoadingLocation)
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                              ],
                             ),
                           ],
                         ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, color: Colors.orange),
+                        onPressed:
+                            _isLoadingLocation
+                                ? null
+                                : _captureAndConfirmLocation,
+                        tooltip: 'Actualizar ubicación',
                       ),
                     ],
                   ),
                 ),
         actions: [
           IconButton(
-            icon: Icon(Icons.search, color: Colors.orange, size: 28),
+            icon: const Icon(Icons.search, color: Colors.orange, size: 28),
             onPressed: _toggleSearch,
           ),
         ],
@@ -649,30 +895,30 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _isSliderLoading
-                    ? Center(child: CircularProgressIndicator())
+                    ? const Center(child: CircularProgressIndicator())
                     : _sliderErrorMessage != null
                     ? Center(
                       child: Column(
                         children: [
                           Text(
                             _sliderErrorMessage!,
-                            style: TextStyle(color: Colors.red),
+                            style: const TextStyle(color: Colors.red),
                           ),
-                          SizedBox(height: 10),
+                          const SizedBox(height: 10),
                           ElevatedButton(
                             onPressed: _fetchSliders,
-                            child: Text('Reintentar'),
+                            child: const Text('Reintentar'),
                           ),
                         ],
                       ),
                     )
                     : sliderItems.isEmpty
-                    ? Center(child: Text('No se encontraron sliders'))
+                    ? const Center(child: Text('No se encontraron sliders'))
                     : CarouselSlider(
                       options: CarouselOptions(
                         height: 180,
                         autoPlay: true,
-                        autoPlayInterval: Duration(seconds: 3),
+                        autoPlayInterval: const Duration(seconds: 3),
                         enlargeCenterPage: true,
                         viewportFraction: 0.9,
                         aspectRatio: 2.0,
@@ -684,7 +930,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                                 return GestureDetector(
                                   onTap: () => item['onTap'](context),
                                   child: Container(
-                                    margin: EdgeInsets.symmetric(
+                                    margin: const EdgeInsets.symmetric(
                                       horizontal: 5.0,
                                     ),
                                     decoration: BoxDecoration(
@@ -693,7 +939,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                                         BoxShadow(
                                           color: Colors.black.withOpacity(0.1),
                                           blurRadius: 10,
-                                          offset: Offset(0, 4),
+                                          offset: const Offset(0, 4),
                                         ),
                                       ],
                                     ),
@@ -709,7 +955,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                                             width: double.infinity,
                                             height: 180,
                                             placeholder:
-                                                (context, url) => Center(
+                                                (context, url) => const Center(
                                                   child:
                                                       CircularProgressIndicator(),
                                                 ),
@@ -717,7 +963,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                                               print(
                                                 'Slider image loading error for $url: $error',
                                               );
-                                              return Icon(
+                                              return const Icon(
                                                 Icons.local_pizza,
                                                 size: 100,
                                                 color: Colors.orange,
@@ -750,7 +996,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                                             children: [
                                               Text(
                                                 item['title'],
-                                                style: TextStyle(
+                                                style: const TextStyle(
                                                   fontSize: 20,
                                                   color: Colors.white,
                                                   fontWeight: FontWeight.bold,
@@ -767,27 +1013,27 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                             );
                           }).toList(),
                     ),
-                SizedBox(height: 24),
+                const SizedBox(height: 24),
                 _isLoading
-                    ? Center(child: CircularProgressIndicator())
+                    ? const Center(child: CircularProgressIndicator())
                     : _errorMessage != null
                     ? Center(
                       child: Column(
                         children: [
                           Text(
                             _errorMessage!,
-                            style: TextStyle(color: Colors.red),
+                            style: const TextStyle(color: Colors.red),
                           ),
-                          SizedBox(height: 10),
+                          const SizedBox(height: 10),
                           ElevatedButton(
                             onPressed: _fetchCategories,
-                            child: Text('Reintentar'),
+                            child: const Text('Reintentar'),
                           ),
                         ],
                       ),
                     )
                     : categories.isEmpty
-                    ? Center(child: Text('No se encontraron categorías'))
+                    ? const Center(child: Text('No se encontraron categorías'))
                     : Column(
                       children: [
                         Row(
@@ -796,14 +1042,15 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                               Expanded(
                                 child: _buildCategorySection(categories[0]),
                               ),
-                            if (categories.length > 1) SizedBox(width: 16),
+                            if (categories.length > 1)
+                              const SizedBox(width: 16),
                             if (categories.length > 1)
                               Expanded(
                                 child: _buildCategorySection(categories[1]),
                               ),
                           ],
                         ),
-                        if (categories.length > 2) SizedBox(height: 32),
+                        if (categories.length > 2) const SizedBox(height: 32),
                         if (categories.length > 2)
                           Row(
                             children: [
@@ -811,7 +1058,8 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                                 Expanded(
                                   child: _buildCategorySection(categories[2]),
                                 ),
-                              if (categories.length > 3) SizedBox(width: 16),
+                              if (categories.length > 3)
+                                const SizedBox(width: 16),
                               if (categories.length > 3)
                                 Expanded(
                                   child: _buildCategorySection(categories[3]),
@@ -831,9 +1079,9 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         unselectedItemColor: Colors.grey,
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
-        items: [
+        items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Productos'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
           BottomNavigationBarItem(
             icon: Icon(Icons.favorite_border),
@@ -864,7 +1112,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
             height: 180,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: 16.0),
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
               children:
                   (category['products'] as List<Map<String, dynamic>>)
                       .asMap()
@@ -909,22 +1157,26 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                 fit: BoxFit.cover,
                 placeholder:
                     (context, url) =>
-                        Center(child: CircularProgressIndicator()),
+                        const Center(child: CircularProgressIndicator()),
                 errorWidget: (context, url, error) {
                   print('Category image loading error for $url: $error');
                   return Container(
                     width: 120,
                     height: 120,
                     color: Colors.grey[300],
-                    child: Icon(Icons.fastfood, size: 60, color: Colors.orange),
+                    child: const Icon(
+                      Icons.fastfood,
+                      size: 60,
+                      color: Colors.orange,
+                    ),
                   );
                 },
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               label,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
                 color: Colors.red,

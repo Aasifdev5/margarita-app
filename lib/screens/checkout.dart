@@ -22,7 +22,7 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   String _paymentMethod = 'Efectivo';
-  String _deliveryAddress = 'Cargando direcciones...';
+  String _deliveryAddress = ''; // Stores address ID
   String _note = '';
   bool _isLoadingLocation = false;
   bool _isLoadingAddresses = true;
@@ -71,7 +71,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _savedAddresses =
               addresses.map((addr) {
                 return {
-                  'id': addr['id'],
+                  'id': addr['id'].toString(),
                   'label': addr['label'],
                   'street': addr['street'],
                   'city': addr['city'],
@@ -90,13 +90,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     _savedAddresses.isNotEmpty
                         ? _savedAddresses.first
                         : {
+                          'id': '',
                           'display': 'No hay direcciones guardadas',
                           'street': '',
                           'city': '',
                           'coordinates': '',
                         },
           );
-          _deliveryAddress = defaultAddress['display'];
+          _deliveryAddress = defaultAddress['id'];
           _isLoadingAddresses = false;
         });
       } else if (response.statusCode == 401 || response.statusCode == 403) {
@@ -104,12 +105,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           const SnackBar(content: Text('Por favor, inicia sesión nuevamente')),
         );
         setState(() {
-          _deliveryAddress = 'Error de autenticación';
+          _deliveryAddress = '';
           _isLoadingAddresses = false;
         });
       } else {
         setState(() {
-          _deliveryAddress = 'Error al cargar direcciones';
+          _deliveryAddress = '';
           _isLoadingAddresses = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -121,7 +122,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } catch (e) {
       print('Error fetching addresses: $e');
       setState(() {
-        _deliveryAddress = 'Error al cargar direcciones';
+        _deliveryAddress = '';
         _isLoadingAddresses = false;
       });
       ScaffoldMessenger.of(
@@ -159,8 +160,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final data = jsonDecode(response.body);
         final newAddress = data['address'];
         setState(() {
-          _savedAddresses.add({
-            'id': newAddress['id'],
+          final newAddr = {
+            'id': newAddress['id'].toString(),
             'label': newAddress['label'],
             'street': newAddress['street'],
             'city': newAddress['city'],
@@ -168,9 +169,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             'is_default': newAddress['is_default'] ?? false,
             'display':
                 '${newAddress['label']}: ${newAddress['street']}, ${newAddress['city']}',
-          });
-          _deliveryAddress =
-              '${newAddress['label']}: ${newAddress['street']}, ${newAddress['city']}';
+          };
+          _savedAddresses.add(newAddr);
+          _deliveryAddress = newAddr['id'];
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -263,11 +264,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         String street = place.street ?? 'Calle desconocida';
         String city = place.locality ?? 'Ciudad desconocida';
         String coordinates = '${position.latitude},${position.longitude}';
-        String address =
-            [
-              street,
-              city,
-            ].where((element) => element.isNotEmpty).join(', ').trim();
 
         // Save the new address
         await _saveNewAddress('Ubicación actual', street, city, coordinates);
@@ -277,7 +273,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         });
       } else {
         setState(() {
-          _deliveryAddress = 'No se pudo obtener la dirección';
+          _deliveryAddress = '';
           _isLoadingLocation = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -287,7 +283,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } catch (e) {
       print('Location error: $e');
       setState(() {
-        _deliveryAddress = 'Error al obtener la ubicación';
+        _deliveryAddress = '';
         _isLoadingLocation = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -297,10 +293,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _confirmOrder() async {
-    if (_deliveryAddress == 'Cargando direcciones...' ||
-        _deliveryAddress == 'Error al cargar direcciones' ||
-        _deliveryAddress == 'Error de autenticación' ||
-        _deliveryAddress == 'No hay direcciones guardadas') {
+    if (_deliveryAddress.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Por favor seleccione una ubicación válida'),
@@ -319,11 +312,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // Add headers
       request.headers.addAll(headers);
 
+      // Find selected address for display
+      final selectedAddress = _savedAddresses.firstWhere(
+        (addr) => addr['id'] == _deliveryAddress,
+        orElse: () => {'display': 'Dirección no encontrada'},
+      );
+
       // Add form fields
       request.fields['payment_mode'] =
           _paymentMethod == 'Efectivo' ? 'cash' : 'upi';
       request.fields['order_type'] = 'delivery';
-      request.fields['delivery_address'] = _deliveryAddress;
+      request.fields['delivery_address'] = selectedAddress['display'];
       request.fields['notes'] = _note;
 
       // Send request
@@ -341,7 +340,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 (context) => OrderSuccessScreen(
                   orderNumber: data['order_number'] ?? 'UNKNOWN',
                   paymentMethod: _paymentMethod,
-                  address: _deliveryAddress,
+                  address: selectedAddress['display'],
                   total: _calculateSubtotal(),
                   orderItems: widget.cartItems,
                 ),
@@ -558,9 +557,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   width: double.infinity,
                   child: DropdownButtonFormField<String>(
                     value:
-                        _savedAddresses.any(
-                              (addr) => addr['display'] == _deliveryAddress,
-                            )
+                        _deliveryAddress.isNotEmpty &&
+                                _savedAddresses.any(
+                                  (addr) => addr['id'] == _deliveryAddress,
+                                )
                             ? _deliveryAddress
                             : null,
                     decoration: InputDecoration(
@@ -581,7 +581,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     items: [
                       ..._savedAddresses.map((addr) {
                         return DropdownMenuItem<String>(
-                          value: addr['display'],
+                          value: addr['id'],
                           child: Text(
                             addr['display'],
                             overflow: TextOverflow.ellipsis,
@@ -589,25 +589,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           ),
                         );
                       }),
-                      DropdownMenuItem<String>(
+                      const DropdownMenuItem<String>(
                         value: 'current_location',
                         child: Row(
                           children: [
-                            _isLoadingLocation
-                                ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                                : const Icon(
-                                  Icons.location_on,
-                                  color: Colors.orange,
-                                  size: 16,
-                                ),
-                            const SizedBox(width: 8),
-                            const Expanded(
+                            Icon(
+                              Icons.location_on,
+                              color: Colors.orange,
+                              size: 16,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
                               child: Text(
                                 'Usar ubicación actual',
                                 overflow: TextOverflow.ellipsis,
@@ -629,6 +621,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     },
                   ),
                 ),
+                if (_isLoadingLocation)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8.0),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
                 const SizedBox(height: 24),
                 const Text(
                   'Notas (Opcional)',
@@ -715,7 +712,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Productos'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
           BottomNavigationBarItem(
             icon: Icon(Icons.favorite_border),
