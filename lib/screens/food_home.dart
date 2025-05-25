@@ -25,8 +25,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   late Animation<double> _fadeAnimation;
   TextEditingController _searchController = TextEditingController();
   bool _showSearch = false;
-  String _currentAddress = 'Obteniendo ubicación...';
-  bool _isLoadingLocation = false;
+  String _currentAddress = '123 Main St, Cityville';
   bool _isLoading = true;
   String? _errorMessage;
   List<Map<String, dynamic>> categories = [];
@@ -34,11 +33,10 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   bool _isSliderLoading = true;
   String? _sliderErrorMessage;
   List<Map<String, dynamic>> _savedAddresses = [];
+  bool _isLoadingLocation = false;
   final String baseUrl = 'https://remoto.digital';
   final bool useRealLocation = true;
   String? _authToken;
-  TextEditingController _deliveryInstructionsController =
-      TextEditingController();
 
   @override
   void initState() {
@@ -60,19 +58,47 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         SharedPreferences prefs = await SharedPreferences.getInstance();
         _authToken = prefs.getString('auth_token');
         print('Loaded auth token: $_authToken');
+
         await _fetchSavedAddresses();
+        bool hasDefaultAddress = _savedAddresses.any(
+          (addr) => addr['is_default'] == true,
+        );
         bool hasShownLocationPopup =
             prefs.getBool('hasShownLocationPopup') ?? false;
-        if (!hasShownLocationPopup) {
+        print(
+          'hasDefaultAddress: $hasDefaultAddress, hasShownLocationPopup: $hasShownLocationPopup',
+        );
+
+        if (!hasDefaultAddress && !hasShownLocationPopup) {
+          print('Showing location popup (no default address)');
           _showLocationPopup();
         } else {
-          await _updateCurrentLocation();
+          print('Skipping location popup');
+          setState(() {
+            if (hasDefaultAddress) {
+              final defaultAddress = _savedAddresses.firstWhere(
+                (addr) => addr['is_default'] == true,
+              );
+              _currentAddress =
+                  '${defaultAddress['street']}, ${defaultAddress['city']}';
+            }
+          });
         }
       } catch (e) {
         print('Error initializing: $e');
         setState(() {
           _currentAddress = 'Error al obtener ubicación';
         });
+        bool hasDefaultAddress = _savedAddresses.any(
+          (addr) => addr['is_default'] == true,
+        );
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        bool hasShownLocationPopup =
+            prefs.getBool('hasShownLocationPopup') ?? false;
+        if (!hasDefaultAddress && !hasShownLocationPopup) {
+          print('Showing location popup due to error (no default address)');
+          _showLocationPopup();
+        }
       }
     });
   }
@@ -81,7 +107,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   void dispose() {
     _animationController.dispose();
     _searchController.dispose();
-    _deliveryInstructionsController.dispose();
     super.dispose();
   }
 
@@ -226,8 +251,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                   'city': addr['city'],
                   'coordinates': addr['coordinates'],
                   'is_default': addr['is_default'] ?? false,
-                  'display':
-                      '${addr['label']}: ${addr['street']}, ${addr['city']}',
                 };
               }).toList();
         });
@@ -244,7 +267,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     String street,
     String city,
     String coordinates,
-    String? instructions,
   ) async {
     if (_authToken == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -262,7 +284,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         'city': city,
         'coordinates': coordinates,
         'is_default': true,
-        'instructions': instructions ?? '',
       };
       print('Saving address to API: $requestBody');
 
@@ -281,18 +302,16 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
 
       if (response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
-        final newAddress = responseData['address'];
         setState(() {
-          _currentAddress = '${newAddress['street']}, ${newAddress['city']}';
+          _currentAddress =
+              '${responseData['address']['street']}, ${responseData['address']['city']}';
           _savedAddresses.add({
-            'id': newAddress['id'].toString(),
-            'label': newAddress['label'],
-            'street': newAddress['street'],
-            'city': newAddress['city'],
-            'coordinates': newAddress['coordinates'],
-            'is_default': newAddress['is_default'] ?? false,
-            'display':
-                '${newAddress['label']}: ${newAddress['street']}, ${newAddress['city']}',
+            'id': responseData['address']['id'].toString(),
+            'label': responseData['address']['label'],
+            'street': responseData['address']['street'],
+            'city': responseData['address']['city'],
+            'coordinates': responseData['address']['coordinates'],
+            'is_default': responseData['address']['is_default'] ?? false,
           });
         });
         SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -302,7 +321,9 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       } else {
         String errorMsg =
             'Error al guardar la dirección: ${response.statusCode}';
-        if (response.statusCode == 401 || response.statusCode == 403) {
+        if (response.statusCode == 302) {
+          errorMsg = 'Redirección detectada. Por favor, verifica tu sesión';
+        } else if (response.statusCode == 401 || response.statusCode == 403) {
           errorMsg = 'Sesión inválida. Por favor, inicia sesión nuevamente';
           SharedPreferences prefs = await SharedPreferences.getInstance();
           await prefs.remove('auth_token');
@@ -328,46 +349,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
           content: Text('Error de conexión al guardar la dirección: $e'),
         ),
       );
-    }
-  }
-
-  Future<void> _updateCurrentLocation() async {
-    setState(() {
-      _isLoadingLocation = true;
-    });
-
-    try {
-      Map<String, dynamic>? locationData = await _getUserLocationData();
-      if (locationData != null) {
-        setState(() {
-          _currentAddress = locationData['address'];
-        });
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setString('lastAddress', _currentAddress);
-      } else if (_savedAddresses.isNotEmpty) {
-        final defaultAddress = _savedAddresses.firstWhere(
-          (addr) => addr['is_default'] == true,
-          orElse: () => _savedAddresses.first,
-        );
-        setState(() {
-          _currentAddress = defaultAddress['display'];
-        });
-      } else {
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        setState(() {
-          _currentAddress =
-              prefs.getString('lastAddress') ?? 'Selecciona una ubicación';
-        });
-      }
-    } catch (e) {
-      print('Error updating location: $e');
-      setState(() {
-        _currentAddress = 'Error al obtener ubicación';
-      });
-    } finally {
-      setState(() {
-        _isLoadingLocation = false;
-      });
     }
   }
 
@@ -428,31 +409,27 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
 
   Future<Map<String, dynamic>?> _getUserLocationData() async {
     if (!useRealLocation) {
-      print('Error: Real location is disabled');
-      return null;
+      print('Using hardcoded location data');
+      return {
+        'street': '123 Main Street',
+        'city': 'Cityville',
+        'coordinates': '40.7128,-74.0060',
+        'address': '123 Main Street, Cityville',
+      };
     }
 
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Por favor, habilita los servicios de ubicación'),
-          action: SnackBarAction(
-            label: 'Configuración',
-            onPressed: () => openAppSettings(),
-          ),
-        ),
-      );
-      return null;
-    }
+    setState(() {
+      _isLoadingLocation = true;
+    });
 
-    var permissionStatus = await Permission.location.status;
-    if (permissionStatus.isDenied) {
-      permissionStatus = await Permission.location.request();
-      if (permissionStatus.isDenied) {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Permiso de ubicación denegado'),
+            content: const Text(
+              'Por favor, habilita los servicios de ubicación',
+            ),
             action: SnackBarAction(
               label: 'Configuración',
               onPressed: () => openAppSettings(),
@@ -461,21 +438,38 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         );
         return null;
       }
-    }
-    if (permissionStatus.isPermanentlyDenied) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Permiso de ubicación denegado permanentemente'),
-          action: SnackBarAction(
-            label: 'Configuración',
-            onPressed: () => openAppSettings(),
-          ),
-        ),
-      );
-      return null;
-    }
 
-    try {
+      var permissionStatus = await Permission.location.status;
+      if (permissionStatus.isDenied) {
+        permissionStatus = await Permission.location.request();
+        if (permissionStatus.isDenied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Permiso de ubicación denegado'),
+              action: SnackBarAction(
+                label: 'Configuración',
+                onPressed: () => openAppSettings(),
+              ),
+            ),
+          );
+          return null;
+        }
+      }
+      if (permissionStatus.isPermanentlyDenied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Permiso de ubicación denegado permanentemente',
+            ),
+            action: SnackBarAction(
+              label: 'Configuración',
+              onPressed: () => openAppSettings(),
+            ),
+          ),
+        );
+        return null;
+      }
+
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
@@ -491,7 +485,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       String country = place.country ?? '';
       String name = place.name ?? '';
 
-      // Construct detailed address for street and display
       List<String> addressParts = [];
       if (name.isNotEmpty && name != street && name != subLocality)
         addressParts.add(name);
@@ -501,7 +494,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       if (fullStreetAddress.isEmpty)
         fullStreetAddress = 'Dirección desconocida';
 
-      // Full address for display (includes city, postal code, country)
       List<String> displayAddressParts = List.from(addressParts);
       if (city.isNotEmpty) displayAddressParts.add(city);
       if (postalCode.isNotEmpty) displayAddressParts.add(postalCode);
@@ -514,10 +506,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         'city': city,
         'coordinates': '${position.latitude},${position.longitude}',
         'address': address,
-        'subLocality': subLocality,
-        'postalCode': postalCode,
-        'country': country,
-        'name': name,
       };
     } catch (e) {
       print('Error getting real location: $e');
@@ -525,13 +513,16 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         SnackBar(content: Text('Error al obtener la ubicación: $e')),
       );
       return null;
+    } finally {
+      setState(() {
+        _isLoadingLocation = false;
+      });
     }
   }
 
   Future<void> _shareLocationViaWhatsApp(
     String address,
     String coordinates,
-    String? instructions,
   ) async {
     try {
       List<String> coords = coordinates.split(',');
@@ -540,11 +531,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       String googleMapsLink =
           'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
       String message =
-          'Hola, aquí está mi ubicación para el envío:\n$address\n';
-      if (instructions != null && instructions.isNotEmpty) {
-        message += 'Instrucciones de entrega: $instructions\n';
-      }
-      message += googleMapsLink;
+          'Hola, aquí está mi ubicación para el envío:\n$address\n$googleMapsLink';
       String whatsappUrl = 'whatsapp://send?text=${Uri.encodeFull(message)}';
       String fallbackUrl = 'https://wa.me/?text=${Uri.encodeFull(message)}';
 
@@ -576,14 +563,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
   }
 
   void _showLocationPopup() {
-    String? selectedAddressId =
-        _savedAddresses.isNotEmpty
-            ? _savedAddresses.firstWhere(
-              (addr) => addr['is_default'] == true,
-              orElse: () => _savedAddresses.first,
-            )['id']
-            : null;
-
+    print('Displaying location popup');
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -592,207 +572,108 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          backgroundColor: Colors.white,
-          title: const Text(
-            'Configura tu ubicación',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Necesitamos tu ubicación para entregarte tu pedido de forma rápida y precisa.',
-                  style: TextStyle(fontSize: 14, color: Colors.black87),
-                ),
-                const SizedBox(height: 16),
-                if (_savedAddresses.isNotEmpty) ...[
-                  const Text(
-                    'Selecciona una dirección guardada:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: selectedAddressId,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+          backgroundColor: Colors.orange,
+          content: Row(
+            children: [
+              const Icon(Icons.location_on, color: Colors.white, size: 30),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'ACTIVA TU UBICACIÓN',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    items:
-                        _savedAddresses.map((addr) {
-                          return DropdownMenuItem<String>(
-                            value: addr['id'],
-                            child: Text(
-                              addr['display'],
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                          );
-                        }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        selectedAddressId = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                const Text(
-                  'O usa tu ubicación actual:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                    SizedBox(height: 5),
+                    Text(
+                      'Comparte tu ubicación para realizar el envío',
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed:
-                      _isLoadingLocation
-                          ? null
-                          : () async {
-                            Navigator.of(context).pop();
-                            await _captureAndConfirmLocation();
-                          },
-                  icon:
-                      _isLoadingLocation
-                          ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                          : const Icon(Icons.location_on),
-                  label: const Text('Obtener ubicación actual'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 40),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _deliveryInstructionsController,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    labelText: 'Instrucciones de entrega (opcional)',
-                    hintText: 'Ej. Dejar en recepción, entrar por puerta B',
-                  ),
-                  maxLines: 2,
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
           actions: [
             TextButton(
-              onPressed: () async {
-                SharedPreferences prefs = await SharedPreferences.getInstance();
-                await prefs.setBool('hasShownLocationPopup', true);
+              onPressed: () {
+                print('Location popup dismissed');
                 Navigator.of(context).pop();
-                await _updateCurrentLocation();
               },
-              child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
+              child: const Text(
+                'X',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             ElevatedButton(
               onPressed:
-                  selectedAddressId != null
-                      ? () async {
-                        final selectedAddress = _savedAddresses.firstWhere(
-                          (addr) => addr['id'] == selectedAddressId,
-                        );
-                        setState(() {
-                          _currentAddress = selectedAddress['display'];
-                        });
-                        SharedPreferences prefs =
-                            await SharedPreferences.getInstance();
-                        await prefs.setBool('hasShownLocationPopup', true);
-                        await prefs.setString('lastAddress', _currentAddress);
-                        Navigator.of(context).pop();
-                      }
-                      : null,
-              child: const Text('Usar dirección seleccionada'),
+                  _isLoadingLocation
+                      ? null
+                      : () async {
+                        try {
+                          Map<String, dynamic>? locationData =
+                              await _getUserLocationData();
+                          if (locationData != null) {
+                            await _saveAddressToApi(
+                              'Home',
+                              locationData['street'],
+                              locationData['city'],
+                              locationData['coordinates'],
+                            );
+                            await _shareLocationViaWhatsApp(
+                              locationData['address'],
+                              locationData['coordinates'],
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'No se pudo obtener la ubicación',
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          print('Error in location popup action: $e');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Error al activar la ubicación: $e',
+                              ),
+                            ),
+                          );
+                        } finally {
+                          Navigator.of(context).pop();
+                        }
+                      },
+              child: const Text(
+                'Activar',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
               ),
             ),
           ],
         );
       },
     );
-  }
-
-  Future<void> _captureAndConfirmLocation() async {
-    setState(() {
-      _isLoadingLocation = true;
-    });
-
-    try {
-      Map<String, dynamic>? locationData = await _getUserLocationData();
-      if (locationData != null) {
-        bool? confirmed = await showDialog<bool>(
-          context: context,
-          builder:
-              (context) => AlertDialog(
-                title: const Text('Confirma tu ubicación'),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Dirección detectada: ${locationData['address']}'),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _deliveryInstructionsController,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        labelText: 'Instrucciones de entrega (opcional)',
-                      ),
-                      maxLines: 2,
-                    ),
-                  ],
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Cancelar'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Confirmar'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-        );
-
-        if (confirmed == true) {
-          await _saveAddressToApi(
-            'Home',
-            locationData['street'], // Use full street address (e.g., "86CC+RR3,industrial,burhanpur")
-            locationData['city'],
-            locationData['coordinates'],
-            _deliveryInstructionsController.text,
-          );
-          await _shareLocationViaWhatsApp(
-            locationData['address'],
-            locationData['coordinates'],
-            _deliveryInstructionsController.text,
-          );
-          setState(() {
-            _currentAddress = locationData['address'];
-          });
-        }
-      }
-    } catch (e) {
-      print('Error capturing location: $e');
-    } finally {
-      setState(() {
-        _isLoadingLocation = false;
-      });
-      _deliveryInstructionsController.clear();
-    }
   }
 
   @override
@@ -840,39 +721,17 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _currentAddress,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.black87,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (_isLoadingLocation)
-                                  const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                              ],
+                            Text(
+                              _currentAddress,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Colors.black87,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.refresh, color: Colors.orange),
-                        onPressed:
-                            _isLoadingLocation
-                                ? null
-                                : _captureAndConfirmLocation,
-                        tooltip: 'Actualizar ubicación',
                       ),
                     ],
                   ),
@@ -1081,7 +940,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         onTap: _onItemTapped,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Productos'),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Tienda'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Pedidos'),
           BottomNavigationBarItem(
             icon: Icon(Icons.favorite_border),
