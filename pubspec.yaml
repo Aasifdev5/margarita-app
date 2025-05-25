@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   carousel_slider_plus: ^6.0.0+1
+  google_sign_in: ^5.0.7
   camera: ^0.11.0+2
   location: ^7.0.1
   permission_handler: ^11.3.1

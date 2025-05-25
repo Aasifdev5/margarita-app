@@ -192,17 +192,20 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         setState(() {
           categories =
               data.map((category) {
-                String imagePath = category['image'].replaceFirst(
-                  'storage/',
-                  '',
-                );
+                // Add null checks for robustness
+                String imagePath =
+                    category['image']?.replaceFirst('storage/', '') ??
+                    'default.jpg';
                 String imageUrl = '$baseUrl/$imagePath';
                 print('Category Image URL: $imageUrl');
                 return {
-                  'category_id': category['id'].toString(),
-                  'name': category['name'],
+                  'category_id': category['id']?.toString() ?? '0',
+                  'name': category['name'] ?? 'Sin nombre',
                   'products': [
-                    {'imageUrl': imageUrl, 'name': category['name']},
+                    {
+                      'imageUrl': imageUrl,
+                      'name': category['name'] ?? 'Sin nombre',
+                    },
                   ],
                 };
               }).toList();
@@ -753,6 +756,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Slider Section
                 _isSliderLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _sliderErrorMessage != null
@@ -873,6 +877,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                           }).toList(),
                     ),
                 const SizedBox(height: 24),
+                // Categories Section - Updated to show all categories
                 _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _errorMessage != null
@@ -893,39 +898,36 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                     )
                     : categories.isEmpty
                     ? const Center(child: Text('No se encontraron categorías'))
-                    : Column(
-                      children: [
-                        Row(
-                          children: [
-                            if (categories.length > 0)
-                              Expanded(
-                                child: _buildCategorySection(categories[0]),
-                              ),
-                            if (categories.length > 1)
-                              const SizedBox(width: 16),
-                            if (categories.length > 1)
-                              Expanded(
-                                child: _buildCategorySection(categories[1]),
-                              ),
-                          ],
-                        ),
-                        if (categories.length > 2) const SizedBox(height: 32),
-                        if (categories.length > 2)
-                          Row(
+                    : ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: (categories.length / 2).ceil(),
+                      itemBuilder: (context, index) {
+                        int firstIndex = index * 2;
+                        int secondIndex = firstIndex + 1;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 32.0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (categories.length > 2)
+                              if (firstIndex < categories.length)
                                 Expanded(
-                                  child: _buildCategorySection(categories[2]),
+                                  child: _buildCategorySection(
+                                    categories[firstIndex],
+                                  ),
                                 ),
-                              if (categories.length > 3)
+                              if (secondIndex < categories.length)
                                 const SizedBox(width: 16),
-                              if (categories.length > 3)
+                              if (secondIndex < categories.length)
                                 Expanded(
-                                  child: _buildCategorySection(categories[3]),
+                                  child: _buildCategorySection(
+                                    categories[secondIndex],
+                                  ),
                                 ),
                             ],
                           ),
-                      ],
+                        );
+                      },
                     ),
               ],
             ),

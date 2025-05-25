@@ -3,7 +3,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:margarita/screens/food_home.dart';
-import 'package:margarita/main.dart'; // Import main.dart for LoginScreen
+import 'package:margarita/main.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
@@ -20,9 +21,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _whatsappController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final TextEditingController _googleWhatsappController =
+      TextEditingController();
 
   Future<void> _register() async {
-    // Validate required fields
     if (_nameController.text.trim().isEmpty ||
         _emailController.text.trim().isEmpty ||
         _passwordController.text.isEmpty ||
@@ -59,14 +62,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         }),
       );
 
+      print('Register response: ${response.statusCode}, ${response.body}');
+
       if (response.statusCode == 201) {
         final data = json.decode(response.body);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', data['token']);
-        await prefs.setString('user_name', data['user']['name']);
+        await prefs.setString('auth_token', data['token'] ?? '');
+        await prefs.setString('user_name', data['user']?['name'] ?? '');
         await prefs.setString(
           'whatsapp_number',
-          data['user']['whatsapp_number'] ?? '',
+          data['user']?['whatsapp_number'] ?? '',
         );
 
         if (mounted) {
@@ -78,18 +83,170 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       } else {
         final data = json.decode(response.body);
         setState(() {
-          _errorMessage = data['message'] ?? 'Registration failed';
+          _errorMessage = data['message'] ?? 'Error al registrarse';
         });
       }
     } catch (e) {
+      print('Register error: $e');
       setState(() {
-        _errorMessage = 'Error: $e';
+        _errorMessage = 'Error de conexión: $e';
       });
     } finally {
       setState(() {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _signUpWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      print('Initiating Google Sign-In');
+      await _googleSignIn.signOut();
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        print('Google Sign-In cancelled by user');
+        setState(() {
+          _errorMessage = 'Registro con Google cancelado';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      print('Google user signed in: ${googleUser.email}');
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+      final String? idToken = googleAuth.idToken;
+      final String? accessToken = googleAuth.accessToken;
+      print('ID Token: $idToken');
+      print('Access Token: $accessToken');
+      if (idToken == null) {
+        print('Failed to obtain ID token');
+        setState(() {
+          _errorMessage = 'No se pudo obtener el token de Google';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      print('Prompting for WhatsApp number');
+      String? whatsappNumber = await _promptForWhatsappNumber();
+      if (whatsappNumber == null) {
+        print('WhatsApp number not provided');
+        setState(() {
+          _errorMessage = 'Número de WhatsApp requerido';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Attempt to register the user
+      print('Attempting to register Google user using /api/register');
+      final response = await http.post(
+        Uri.parse('https://remoto.digital/api/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'name': googleUser.displayName ?? 'Google User',
+          'email': googleUser.email,
+          'password': 'google_${googleUser.id}',
+          'password_confirmation': 'google_${googleUser.id}',
+          'whatsapp_number': whatsappNumber,
+        }),
+      );
+
+      print(
+        'Google register response: ${response.statusCode}, ${response.body}',
+      );
+
+      if (response.statusCode == 201) {
+        final data = json.decode(response.body);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('auth_token', data['token'] ?? '');
+        await prefs.setString('user_name', data['user']?['name'] ?? '');
+        await prefs.setString(
+          'whatsapp_number',
+          data['user']?['whatsapp_number'] ?? '',
+        );
+
+        if (mounted) {
+          print('Navigating to FoodHomeScreen');
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => FoodHomeScreen()),
+          );
+        }
+      } else {
+        final data = response.body.isNotEmpty ? json.decode(response.body) : {};
+        print('Backend error: ${data['message']}');
+        setState(() {
+          _errorMessage =
+              data['message'] ??
+              'Error al registrarse con Google (Code: ${response.statusCode})';
+        });
+      }
+    } catch (e) {
+      print('Google Sign-In error: $e');
+      setState(() {
+        _errorMessage = 'Error al registrarse con Google: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<String?> _promptForWhatsappNumber() async {
+    _googleWhatsappController.clear();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Número de WhatsApp'),
+          content: TextField(
+            controller: _googleWhatsappController,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              hintText: 'Ingresa tu número de WhatsApp (ej. +1234567890)',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                print('WhatsApp prompt cancelled');
+                Navigator.pop(context, null);
+              },
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () {
+                final input = _googleWhatsappController.text.trim();
+                if (input.isNotEmpty &&
+                    RegExp(r'^\+?\d{10,15}$').hasMatch(input)) {
+                  print('WhatsApp number accepted: $input');
+                  Navigator.pop(context, input);
+                } else {
+                  print('Invalid WhatsApp number: $input');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Ingresa un número de WhatsApp válido (10-15 dígitos)',
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Aceptar'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -99,6 +256,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _whatsappController.dispose();
+    _googleWhatsappController.dispose();
     super.dispose();
   }
 
@@ -164,6 +322,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   Text(
                     _errorMessage!,
                     style: const TextStyle(color: Colors.red),
+                    textAlign: TextAlign.center,
                   ),
                 ],
                 const SizedBox(height: 30),
@@ -189,7 +348,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     ),
                 const SizedBox(height: 20),
                 OutlinedButton(
-                  onPressed: () {}, // Implement Google Sign-In later
+                  onPressed: _isLoading ? null : _signUpWithGoogle,
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 50),
                     shape: RoundedRectangleBorder(
@@ -232,7 +391,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => LoginScreen(),
+                            builder: (context) => const LoginScreen(),
                           ),
                         );
                       },
