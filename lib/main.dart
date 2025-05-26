@@ -127,7 +127,6 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _whatsappController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
   final GoogleSignIn _googleSignIn = GoogleSignIn(
@@ -159,7 +158,6 @@ class _LoginScreenState extends State<LoginScreen> {
         body: json.encode({
           'email': _emailController.text.trim(),
           'password': _passwordController.text,
-          'whatsapp_number': _whatsappController.text.trim(),
         }),
       );
 
@@ -173,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.setString('user_name', data['user']?['name'] ?? '');
         await prefs.setString(
           'whatsapp_number',
-          data['user']?['whatsapp_number'] ?? _whatsappController.text.trim(),
+          data['user']?['whatsapp_number'] ?? '',
         );
 
         if (mounted) {
@@ -208,11 +206,6 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Optional: Warn if whatsapp_number is empty
-      if (_whatsappController.text.trim().isEmpty) {
-        print('Google Sign-In: WhatsApp number is empty');
-      }
-
       // Sign out to ensure a fresh login
       await _googleSignIn.signOut();
       print('Google Sign-In: Signed out previous session');
@@ -246,10 +239,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final response = await http.post(
         Uri.parse('https://remoto.digital/api/google-login'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'id_token': idToken,
-          'whatsapp_number': _whatsappController.text.trim(),
-        }),
+        body: json.encode({'id_token': idToken}),
       );
 
       print('Google Sign-In API Response Status: ${response.statusCode}');
@@ -266,7 +256,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.setString('user_name', data['user']?['name'] ?? '');
         await prefs.setString(
           'whatsapp_number',
-          data['user']?['whatsapp_number'] ?? _whatsappController.text.trim(),
+          data['user']?['whatsapp_number'] ?? '',
         );
 
         if (mounted) {
@@ -279,9 +269,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final data = response.body.isNotEmpty ? json.decode(response.body) : {};
         setState(() {
           _errorMessage =
-              data['errors']?['whatsapp_number']?.join(', ') ??
-              data['message'] ??
-              'Error al iniciar sesión con Google';
+              data['message'] ?? 'Error al iniciar sesión con Google';
         });
       }
     } catch (e, stackTrace) {
@@ -301,7 +289,6 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    _whatsappController.dispose();
     super.dispose();
   }
 
@@ -338,13 +325,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   icon: Icons.lock,
                   hintText: 'Contraseña *',
                   obscureText: true,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _whatsappController,
-                  icon: Icons.phone,
-                  hintText: 'Número de WhatsApp (opcional)',
-                  keyboardType: TextInputType.phone,
                 ),
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 10),

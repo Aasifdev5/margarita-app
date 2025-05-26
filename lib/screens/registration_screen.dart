@@ -21,7 +21,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _whatsappController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId:
+        '71875387439-ieqi697tn881mbcs1o2jmtb77499h93q.apps.googleusercontent.com', // Android client ID
+    serverClientId:
+        '71875387439-2jqa28abnf9hfeq68i57jg899l4o6u72.apps.googleusercontent.com', // Web client ID
+    scopes: ['email', 'profile'],
+  );
   final TextEditingController _googleWhatsappController =
       TextEditingController();
 
@@ -105,67 +111,54 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     });
 
     try {
-      print('Initiating Google Sign-In');
+      // Sign out to ensure a fresh login
       await _googleSignIn.signOut();
+      print('Google Sign-In: Signed out previous session');
+
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
-        print('Google Sign-In cancelled by user');
         setState(() {
           _errorMessage = 'Registro con Google cancelado';
           _isLoading = false;
         });
+        print('Google Sign-In: User cancelled');
         return;
       }
 
-      print('Google user signed in: ${googleUser.email}');
+      print('Google Sign-In: User: ${googleUser.email}');
+
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
       final String? idToken = googleAuth.idToken;
-      final String? accessToken = googleAuth.accessToken;
-      print('ID Token: $idToken');
-      print('Access Token: $accessToken');
+
       if (idToken == null) {
-        print('Failed to obtain ID token');
         setState(() {
           _errorMessage = 'No se pudo obtener el token de Google';
           _isLoading = false;
         });
+        print('Google Sign-In: ID token is null');
         return;
       }
 
-      print('Prompting for WhatsApp number');
-      String? whatsappNumber = await _promptForWhatsappNumber();
-      if (whatsappNumber == null) {
-        print('WhatsApp number not provided');
-        setState(() {
-          _errorMessage = 'Número de WhatsApp requerido';
-          _isLoading = false;
-        });
-        return;
-      }
+      print('Google ID Token: $idToken');
 
-      // Attempt to register the user
-      print('Attempting to register Google user using /api/register');
       final response = await http.post(
-        Uri.parse('https://remoto.digital/api/register'),
+        Uri.parse('https://remoto.digital/api/google-login'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'name': googleUser.displayName ?? 'Google User',
-          'email': googleUser.email,
-          'password': 'google_${googleUser.id}',
-          'password_confirmation': 'google_${googleUser.id}',
-          'whatsapp_number': whatsappNumber,
-        }),
+        body: json.encode({'id_token': idToken}),
       );
 
-      print(
-        'Google register response: ${response.statusCode}, ${response.body}',
-      );
+      print('Google Sign-In API Response Status: ${response.statusCode}');
+      print('Google Sign-In API Response Body: ${response.body}');
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', data['token'] ?? '');
+        final token = data['token'];
+        if (token == null) {
+          throw Exception('Token no recibido en la respuesta');
+        }
+        await prefs.setString('auth_token', token);
         await prefs.setString('user_name', data['user']?['name'] ?? '');
         await prefs.setString(
           'whatsapp_number',
@@ -173,7 +166,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         );
 
         if (mounted) {
-          print('Navigating to FoodHomeScreen');
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => FoodHomeScreen()),
@@ -181,17 +173,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         }
       } else {
         final data = response.body.isNotEmpty ? json.decode(response.body) : {};
-        print('Backend error: ${data['message']}');
         setState(() {
-          _errorMessage =
-              data['message'] ??
-              'Error al registrarse con Google (Code: ${response.statusCode})';
+          _errorMessage = data['message'] ?? 'Error al registrarse con Google';
         });
       }
-    } catch (e) {
-      print('Google Sign-In error: $e');
+    } catch (e, stackTrace) {
+      print('Google Sign-In Error: $e');
+      print('Stack Trace: $stackTrace');
       setState(() {
-        _errorMessage = 'Error al registrarse con Google: $e';
+        _errorMessage = 'Error al registrarse con Google: ${e.toString()}';
       });
     } finally {
       setState(() {
