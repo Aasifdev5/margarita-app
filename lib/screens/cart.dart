@@ -3,7 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:margarita/screens/checkout.dart';
-import 'package:margarita/services/api_service.dart'; // Import ApiService
+import 'package:margarita/services/api_service.dart';
 
 class CartScreen extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
@@ -22,7 +22,20 @@ class _CartScreenState extends State<CartScreen> {
   @override
   void initState() {
     super.initState();
-    _items = List.from(widget.cartItems);
+    // Normalize prices to Bs. on initialization
+    _items =
+        widget.cartItems.map((item) {
+          final newItem = Map<String, dynamic>.from(item);
+          if (newItem['price'] != null) {
+            final priceValue =
+                double.tryParse(
+                  newItem['price'].toString().replaceAll(RegExp(r'[^\d.]'), ''),
+                ) ??
+                0.0;
+            newItem['price'] = 'Bs. ${priceValue.toStringAsFixed(2)}';
+          }
+          return newItem;
+        }).toList();
     _calculateTotal();
   }
 
@@ -31,7 +44,7 @@ class _CartScreenState extends State<CartScreen> {
     for (var item in _items) {
       final price = item['price'] as String;
       final quantity = item['quantity'] as int;
-      final priceValue = double.tryParse(price.replaceAll('\$', '')) ?? 0.0;
+      final priceValue = double.tryParse(price.replaceAll('Bs. ', '')) ?? 0.0;
       _total += priceValue * quantity;
     }
   }
@@ -40,40 +53,12 @@ class _CartScreenState extends State<CartScreen> {
     final item = _items[index];
     final newQuantity = (item['quantity'] as int) + change;
 
-    if (newQuantity <= 0) {
-      try {
-        final headers = await ApiService.getHeaders();
-        final response = await http.post(
-          Uri.parse('$baseUrl/api/cart/remove'),
-          headers: headers,
-          body: json.encode({'product_id': item['id'], 'remove_all': true}),
-        );
-        print(
-          'Remove from cart response: ${response.statusCode}, ${response.body}',
-        );
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          setState(() {
-            _items.clear();
-            _items.addAll(List<Map<String, dynamic>>.from(data['cart']));
-            _calculateTotal();
-          });
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al actualizar el carrito')),
-          );
-        }
-      } catch (e) {
-        print('Error updating cart: $e');
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error de conexión')));
-      }
-      return;
-    }
-
     try {
       final headers = await ApiService.getHeaders();
+      if (newQuantity <= 0) {
+        await _removeItem(index);
+        return;
+      }
       final response = await http.post(
         Uri.parse('$baseUrl/api/cart/add'),
         headers: headers,
@@ -84,12 +69,29 @@ class _CartScreenState extends State<CartScreen> {
         final data = json.decode(response.body);
         setState(() {
           _items.clear();
-          _items.addAll(List<Map<String, dynamic>>.from(data['cart']));
+          final fetchedItems = List<Map<String, dynamic>>.from(data['cart']);
+          // Reformat prices to Bs.
+          _items.addAll(
+            fetchedItems.map((item) {
+              if (item['price'] != null) {
+                final priceValue =
+                    double.tryParse(
+                      item['price'].toString().replaceAll(
+                        RegExp(r'[^\d.]'),
+                        '',
+                      ),
+                    ) ??
+                    0.0;
+                item['price'] = 'Bs. ${priceValue.toStringAsFixed(2)}';
+              }
+              return item;
+            }),
+          );
           _calculateTotal();
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al actualizar el carrito')),
+          const SnackBar(content: Text('Error al actualizar el carrito')),
         );
       }
     } catch (e) {
@@ -103,7 +105,63 @@ class _CartScreenState extends State<CartScreen> {
         _calculateTotal();
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Actualizado localmente debido a error')),
+        const SnackBar(content: Text('Actualizado localmente debido a error')),
+      );
+    }
+  }
+
+  Future<void> _removeItem(int index) async {
+    final item = _items[index];
+    try {
+      final headers = await ApiService.getHeaders();
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/cart/remove'),
+        headers: headers,
+        body: json.encode({'product_id': item['id'], 'remove_all': true}),
+      );
+      print(
+        'Remove from cart response: ${response.statusCode}, ${response.body}',
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          _items.clear();
+          final fetchedItems = List<Map<String, dynamic>>.from(data['cart']);
+          // Reformat prices to Bs.
+          _items.addAll(
+            fetchedItems.map((item) {
+              if (item['price'] != null) {
+                final priceValue =
+                    double.tryParse(
+                      item['price'].toString().replaceAll(
+                        RegExp(r'[^\d.]'),
+                        '',
+                      ),
+                    ) ??
+                    0.0;
+                item['price'] = 'Bs. ${priceValue.toStringAsFixed(2)}';
+              }
+              return item;
+            }),
+          );
+          _calculateTotal();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${item['name']} eliminado del carrito')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error al eliminar el producto')),
+        );
+      }
+    } catch (e) {
+      print('Error removing item: $e');
+      setState(() {
+        _items.removeAt(index);
+        _calculateTotal();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Eliminado localmente debido a error')),
       );
     }
   }
@@ -112,7 +170,7 @@ class _CartScreenState extends State<CartScreen> {
     if (_items.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('El carrito está vacío')));
+      ).showSnackBar(const SnackBar(content: Text('El carrito está vacío')));
       return;
     }
 
@@ -139,7 +197,7 @@ class _CartScreenState extends State<CartScreen> {
           style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.orange),
+          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFFF8901)),
           onPressed: () => Navigator.of(context).pop(_items),
         ),
       ),
@@ -163,7 +221,7 @@ class _CartScreenState extends State<CartScreen> {
                         color: Colors.grey,
                       ),
                     ),
-                    SizedBox(height: 10),
+                    SizedBox(height: 8),
                     Text(
                       'Añade productos para continuar',
                       style: TextStyle(color: Colors.grey),
@@ -174,19 +232,16 @@ class _CartScreenState extends State<CartScreen> {
               : Column(
                 children: [
                   Expanded(
-                    child: ListView(
+                    child: ListView.builder(
                       padding: const EdgeInsets.all(16),
-                      children: [
-                        // Cart items
-                        ..._items.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final item = entry.value;
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: _buildCartItem(item, index),
-                          );
-                        }).toList(),
-                      ],
+                      itemCount: _items.length,
+                      itemBuilder: (context, index) {
+                        final item = _items[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: _buildCartItem(item, index),
+                        );
+                      },
                     ),
                   ),
                   _buildCheckoutSection(),
@@ -196,7 +251,6 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   Widget _buildCartItem(Map<String, dynamic> item, int index) {
-    // Prepend base URL to imageUrl
     final imageUrl =
         item['imageUrl'] != null && item['imageUrl'].isNotEmpty
             ? '$baseUrl/${item['imageUrl'].startsWith('/') ? item['imageUrl'].substring(1) : item['imageUrl']}'
@@ -246,7 +300,7 @@ class _CartScreenState extends State<CartScreen> {
                     : const Icon(
                       Icons.fastfood,
                       size: 70,
-                      color: Colors.orange,
+                      color: Color(0xFFFF8901),
                     ),
           ),
           const SizedBox(width: 16),
@@ -254,30 +308,43 @@ class _CartScreenState extends State<CartScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  item['name'] as String? ?? 'Producto sin nombre',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item['name'] as String? ?? 'Producto sin nombre',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: () => _removeItem(index),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  item['price'] as String? ?? '\$0.00',
+                  item['price'] as String? ?? 'Bs. 0.00',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
-                    color: Colors.orange,
+                    color: Color(0xFFFF8901),
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Row(
             children: [
               IconButton(
                 icon: const Icon(Icons.remove_circle_outline),
-                color: Colors.orange,
+                color: Color(0xFFFF8901),
                 onPressed: () => _updateQuantity(index, -1),
               ),
               Text(
@@ -289,7 +356,7 @@ class _CartScreenState extends State<CartScreen> {
               ),
               IconButton(
                 icon: const Icon(Icons.add_circle_outline),
-                color: Colors.orange,
+                color: Color(0xFFFF8901),
                 onPressed: () => _updateQuantity(index, 1),
               ),
             ],
@@ -327,11 +394,11 @@ class _CartScreenState extends State<CartScreen> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               Text(
-                '\$${_total.toStringAsFixed(2)}',
+                'Bs. ${_total.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Colors.orange,
+                  color: Color(0xFFFF8901),
                 ),
               ),
             ],
@@ -342,7 +409,7 @@ class _CartScreenState extends State<CartScreen> {
             child: ElevatedButton(
               onPressed: _checkout,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
+                backgroundColor: Color(0xFFFF8901),
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),

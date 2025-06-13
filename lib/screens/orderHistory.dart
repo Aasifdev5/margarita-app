@@ -57,14 +57,14 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             children: [
               Text('Fecha: ${order.date}'),
               const SizedBox(height: 8),
-              Text('Total: \$${order.total}'),
+              Text('Total: Bs. ${order.total}'),
               const SizedBox(height: 8),
               const Text('Artículos:'),
               ...order.items.map(
                 (item) => Padding(
                   padding: const EdgeInsets.only(left: 16.0, top: 4.0),
                   child: Text(
-                    '- ${item['name']} (x${item['quantity']}, \$${item['price']})',
+                    '- ${item['name']} (x${item['quantity']}, Bs. ${item['price']})',
                   ),
                 ),
               ),
@@ -209,7 +209,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                                 ),
                               ),
                               Text(
-                                '\$${order.total}',
+                                'Bs. ${order.total}',
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,

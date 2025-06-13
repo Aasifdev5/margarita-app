@@ -98,7 +98,8 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
 
   Widget _buildOrderItem(Map<String, dynamic> item) {
     final name = item['name'] ?? 'Producto sin nombre';
-    final price = item['price']?.toString() ?? '\$0.00';
+    final rawPrice = item['price']?.toString() ?? '0.00';
+    final price = 'Bs. $rawPrice';
     final quantity = item['quantity']?.toString() ?? '1';
 
     return Padding(
@@ -149,7 +150,6 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Success Icon
                   AnimatedScale(
                     scale: 1.0,
                     duration: const Duration(milliseconds: 600),
@@ -164,7 +164,6 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
                     ),
                   ),
                   const SizedBox(height: 20),
-                  // Success Message
                   Semantics(
                     header: true,
                     child: Text(
@@ -179,7 +178,6 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
                     ),
                   ),
                   const SizedBox(height: 30),
-                  // Order Details Card
                   Card(
                     elevation: 4,
                     shape: RoundedRectangleBorder(
@@ -219,7 +217,7 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
                           ),
                           _buildDetailRow(
                             'Total',
-                            '\$${widget.total.toStringAsFixed(2)}',
+                            'Bs. ${widget.total.toStringAsFixed(2)}',
                           ),
                           const Divider(height: 32, thickness: 1),
                           Text(
@@ -237,7 +235,6 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
                     ),
                   ),
                   const SizedBox(height: 30),
-                  // Navigation Buttons
                   SizedBox(
                     width: screenWidth * 0.9,
                     child: ElevatedButton(
@@ -309,7 +306,7 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.orange,
         unselectedItemColor: Colors.grey,
-        currentIndex: 2, // Highlight 'Pedidos' tab
+        currentIndex: 2,
         onTap: (index) {
           Widget destination;
           switch (index) {

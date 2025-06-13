@@ -10,6 +10,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:math' as math;
 
 class CheckoutScreen extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
@@ -22,31 +23,64 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   String _paymentMethod = 'Efectivo';
-  String _deliveryAddress = ''; // Stores address ID
+  String _deliveryAddress = '';
   String _note = '';
   bool _isLoadingLocation = false;
   bool _isLoadingAddresses = true;
   List<Map<String, dynamic>> _savedAddresses = [];
   static const String baseUrl = 'https://remoto.digital';
+  Map<String, dynamic>? _restaurantCoordinates;
 
   @override
   void initState() {
     super.initState();
-    print('CheckoutScreen initState called');
     _validateCart();
     _fetchSavedAddresses();
+    _fetchRestaurantCoordinates();
   }
 
   Future<void> _validateCart() async {
     if (widget.cartItems.isEmpty) {
-      print('Cart is empty, navigating back');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('El carrito está vacío')));
       await Future.delayed(const Duration(seconds: 1));
       Navigator.pop(context);
-    } else {
-      print('Cart items: ${widget.cartItems}');
+    }
+  }
+
+  Future<void> _fetchRestaurantCoordinates() async {
+    if (widget.cartItems.isEmpty) return;
+    final restaurantId = widget.cartItems.first['created_by_restaurant'] ?? 1;
+    try {
+      final headers = await ApiService.getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/restaurants/$restaurantId/coordinates'),
+        headers: headers,
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _restaurantCoordinates = {
+            'latitude': data['latitude'],
+            'longitude': data['longitude'],
+          };
+        });
+      } else {
+        setState(() {
+          _restaurantCoordinates = {
+            'latitude': -17.7888006,
+            'longitude': -63.1680132,
+          };
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _restaurantCoordinates = {
+          'latitude': -17.7888006,
+          'longitude': -63.1680132,
+        };
+      });
     }
   }
 
@@ -54,16 +88,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() {
       _isLoadingAddresses = true;
     });
-
     try {
       final headers = await ApiService.getHeaders();
       final response = await http.get(
         Uri.parse('$baseUrl/api/addresses'),
         headers: headers,
       );
-
-      print('Addresses API response: ${response.statusCode}, ${response.body}');
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> addresses = data['addresses'] ?? [];
@@ -81,8 +111,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       '${addr['label']}: ${addr['street']}, ${addr['city']}',
                 };
               }).toList();
-
-          // Set default address
           final defaultAddress = _savedAddresses.firstWhere(
             (addr) => addr['is_default'] == true,
             orElse:
@@ -120,7 +148,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         );
       }
     } catch (e) {
-      print('Error fetching addresses: $e');
       setState(() {
         _deliveryAddress = '';
         _isLoadingAddresses = false;
@@ -146,16 +173,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'coordinates': coordinates,
         'is_default': false,
       };
-      print('Saving new address: $requestBody');
-
       final response = await http.post(
         Uri.parse('$baseUrl/api/addresses'),
         headers: headers,
         body: jsonEncode(requestBody),
       );
-
-      print('Save address response: ${response.statusCode}, ${response.body}');
-
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body);
         final newAddress = data['address'];
@@ -183,7 +205,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         );
       }
     } catch (e) {
-      print('Error saving new address: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error de conexión al guardar la dirección: $e'),
@@ -192,10 +213,53 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  double _calculateDistance(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const double earthRadius = 6371;
+    final double dLat = (lat2 - lat1) * math.pi / 180;
+    final double dLon = (lon2 - lon1) * math.pi / 180;
+    final double a =
+        (math.sin(dLat / 2) * math.sin(dLat / 2)) +
+        math.cos(lat1 * math.pi / 180) *
+            math.cos(lat2 * math.pi / 180) *
+            (math.sin(dLon / 2) * math.sin(dLon / 2));
+    final double c = 2 * math.asin(math.sqrt(a));
+    return earthRadius * c;
+  }
+
+  double _calculateDeliveryCost() {
+    if (_deliveryAddress.isEmpty ||
+        widget.cartItems.isEmpty ||
+        _restaurantCoordinates == null)
+      return 0.0;
+    final selectedAddress = _savedAddresses.firstWhere(
+      (addr) => addr['id'] == _deliveryAddress,
+      orElse: () => {'coordinates': ''},
+    );
+    if (selectedAddress['coordinates'].isEmpty) return 0.0;
+    final coordinates = selectedAddress['coordinates'].split(',');
+    if (coordinates.length != 2) return 0.0;
+    final double userLat = double.tryParse(coordinates[0]) ?? 0.0;
+    final double userLon = double.tryParse(coordinates[1]) ?? 0.0;
+    final double restaurantLat = _restaurantCoordinates!['latitude'] as double;
+    final double restaurantLon = _restaurantCoordinates!['longitude'] as double;
+    final double distance = _calculateDistance(
+      userLat,
+      userLon,
+      restaurantLat,
+      restaurantLon,
+    );
+    return distance * 5.0;
+  }
+
   double _calculateSubtotal() {
     return widget.cartItems.fold(0.0, (sum, item) {
-      String priceStr = (item['price'] ?? '\$0.00')
-          .replaceAll('\$', '')
+      String priceStr = (item['price'] ?? 'Bs. 0.00')
+          .replaceAll('Bs. ', '')
           .replaceAll(',', '.');
       double price = double.tryParse(priceStr) ?? 0.0;
       int quantity = item['quantity'] ?? 1;
@@ -203,11 +267,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
   }
 
+  double _calculateTotal() {
+    return _calculateSubtotal() + _calculateDeliveryCost();
+  }
+
   Future<void> _getCurrentLocation() async {
     setState(() {
       _isLoadingLocation = true;
     });
-
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -221,7 +288,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         });
         return;
       }
-
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -235,7 +301,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           return;
         }
       }
-
       if (permission == LocationPermission.deniedForever) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -249,25 +314,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         });
         return;
       }
-
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-
       List<Placemark> placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );
-
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks.first;
         String street = place.street ?? 'Calle desconocida';
         String city = place.locality ?? 'Ciudad desconocida';
         String coordinates = '${position.latitude},${position.longitude}';
-
-        // Save the new address
         await _saveNewAddress('Ubicación actual', street, city, coordinates);
-
         setState(() {
           _isLoadingLocation = false;
         });
@@ -281,7 +340,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         );
       }
     } catch (e) {
-      print('Location error: $e');
       setState(() {
         _deliveryAddress = '';
         _isLoadingLocation = false;
@@ -301,36 +359,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       );
       return;
     }
-
     try {
       final headers = await ApiService.getHeaders();
       final request = http.MultipartRequest(
         'POST',
         Uri.parse('$baseUrl/api/cart/checkout'),
       );
-
-      // Add headers
       request.headers.addAll(headers);
-
-      // Find selected address for display
       final selectedAddress = _savedAddresses.firstWhere(
         (addr) => addr['id'] == _deliveryAddress,
         orElse: () => {'display': 'Dirección no encontrada'},
       );
-
-      // Add form fields
       request.fields['payment_mode'] =
           _paymentMethod == 'Efectivo' ? 'cash' : 'upi';
       request.fields['order_type'] = 'delivery';
       request.fields['delivery_address'] = selectedAddress['display'];
       request.fields['notes'] = _note;
-
-      // Send request
+      request.fields['delivery_cost'] = _calculateDeliveryCost()
+          .toStringAsFixed(2);
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-
-      print('Checkout response: ${response.statusCode}, ${response.body}');
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         Navigator.push(
@@ -341,7 +389,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   orderNumber: data['order_number'] ?? 'UNKNOWN',
                   paymentMethod: _paymentMethod,
                   address: selectedAddress['display'],
-                  total: _calculateSubtotal(),
+                  total: _calculateTotal(),
                   orderItems: widget.cartItems,
                 ),
           ),
@@ -358,7 +406,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         );
       }
     } catch (e) {
-      print('Checkout error: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error de conexión: $e')));
@@ -375,8 +422,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         imageUrl != null && imageUrl.isNotEmpty
             ? '$baseUrl${imageUrl.startsWith('/') ? imageUrl : '/$imageUrl'}'
             : null;
-    print('Loading image URL: $fullImageUrl');
-
     return Container(
       margin: const EdgeInsets.only(bottom: 16.0),
       child: Row(
@@ -397,14 +442,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               child: CircularProgressIndicator(),
                             ),
                           ),
-                      errorWidget: (context, url, error) {
-                        print('Image load error for URL: $url, Error: $error');
-                        return const Icon(
-                          Icons.broken_image,
-                          size: 60,
-                          color: Colors.grey,
-                        );
-                      },
+                      errorWidget:
+                          (context, url, error) => const Icon(
+                            Icons.broken_image,
+                            size: 60,
+                            color: Colors.grey,
+                          ),
                     )
                     : const Icon(
                       Icons.fastfood,
@@ -432,7 +475,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ),
           Text(
-            '\$${(double.parse(price.replaceAll('\$', '').replaceAll(',', '.')) * quantity).toStringAsFixed(2)}',
+            'Bs. ${(double.parse(price.replaceAll('Bs. ', '').replaceAll(',', '.')) * quantity).toStringAsFixed(2)}',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ],
@@ -506,7 +549,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print('Building CheckoutScreen');
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -531,7 +573,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   (item) => _buildOrderItem(
                     imageUrl: item['imageUrl'] as String?,
                     name: item['name'] ?? 'Producto sin nombre',
-                    price: item['price'] ?? '\$0.00',
+                    price: item['price'] ?? 'Bs. 0.00',
                     quantity: item['quantity'] ?? 1,
                   ),
                 ),
@@ -539,12 +581,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 const Divider(),
                 _buildCostRow(
                   'Total parcial',
-                  '\$${_calculateSubtotal().toStringAsFixed(2)}',
+                  'Bs. ${_calculateSubtotal().toStringAsFixed(2)}',
+                ),
+                _buildCostRow(
+                  'Costo de entrega',
+                  'Bs. ${_calculateDeliveryCost().toStringAsFixed(2)}',
                 ),
                 const SizedBox(height: 16),
                 _buildCostRow(
                   'Total',
-                  '\$${_calculateSubtotal().toStringAsFixed(2)}',
+                  'Bs. ${_calculateTotal().toStringAsFixed(2)}',
                   isTotal: true,
                 ),
                 const SizedBox(height: 24),

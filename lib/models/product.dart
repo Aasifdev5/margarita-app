@@ -9,6 +9,7 @@ class Product extends Equatable {
   final String image;
   final double? price;
   final String category;
+  final int createdByRestaurant; // Added field
 
   const Product({
     required this.id,
@@ -19,6 +20,7 @@ class Product extends Equatable {
     required this.image,
     this.price,
     required this.category,
+    required this.createdByRestaurant, // Added to constructor
   });
 
   factory Product.fromJson(Map<String, dynamic> json, String baseUrl) {
@@ -31,6 +33,12 @@ class Product extends Equatable {
         5: 'Snacks',
         6: 'Drinks',
         7: 'Desserts',
+        30: 'Pizza', // From products table (e.g., Pizza Hawaiana)
+        31: 'Sandwiches', // From products table (e.g., Doble pechuga)
+        36: 'Combos', // From products table (e.g., Pollo, Combo 6 Alitas)
+        49: 'Family Combos', // From products table (e.g., COMBO FERIADO)
+        52: 'Desserts', // From products table (e.g., Helado de vainilla)
+        53: 'Beverages', // From products table (e.g., Frappé de mango)
       };
       return categoryMap[categoryId] ?? 'Others';
     }
@@ -52,6 +60,7 @@ class Product extends Equatable {
               ? double.tryParse(json['price'].toString())
               : null,
       category: getCategoryName(json['category_id'] as int? ?? 0),
+      createdByRestaurant: json['created_by_restaurant'] as int? ?? 1, // Added
     );
   }
 
@@ -65,6 +74,7 @@ class Product extends Equatable {
       'image': image,
       'price': price,
       'category': category,
+      'created_by_restaurant': createdByRestaurant, // Added
     };
   }
 
@@ -78,5 +88,6 @@ class Product extends Equatable {
     image,
     price,
     category,
+    createdByRestaurant, // Added to props
   ];
 }

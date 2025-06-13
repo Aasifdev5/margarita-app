@@ -17,7 +17,21 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
   @override
   void initState() {
     super.initState();
-    _favorites = List.from(widget.favorites);
+    // Normalize prices to Bs. and copy all fields
+    _favorites =
+        widget.favorites.map((item) {
+          final newItem = Map<String, dynamic>.from(item);
+          if (newItem['price'] != null) {
+            final priceValue =
+                double.tryParse(
+                  newItem['price'].toString().replaceAll(RegExp(r'[^\d.]'), ''),
+                ) ??
+                0.0;
+            newItem['price'] = 'Bs. ${priceValue.toStringAsFixed(2)}';
+          }
+          return newItem;
+        }).toList();
+    print('Initial favorites with prices: $_favorites');
   }
 
   Future<void> _removeFromFavorites(int index) async {
@@ -37,11 +51,26 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
       final response = await ApiService.delete(
         '/api/favorites/remove/${item['id']}',
       );
+      print('Favorites API response: ${response['body']['favorites']}');
       if (response['statusCode'] == 200) {
         setState(() {
           _favorites.clear();
+          final fetchedFavorites = List<Map<String, dynamic>>.from(
+            response['body']['favorites'],
+          );
+          // Reformat prices to Bs.
           _favorites.addAll(
-            List<Map<String, dynamic>>.from(response['body']['favorites']),
+            fetchedFavorites.map((fav) {
+              if (fav['price'] != null) {
+                final priceValue =
+                    double.tryParse(
+                      fav['price'].toString().replaceAll(RegExp(r'[^\d.]'), ''),
+                    ) ??
+                    0.0;
+                fav['price'] = 'Bs. ${priceValue.toStringAsFixed(2)}';
+              }
+              return fav;
+            }),
           );
         });
         ScaffoldMessenger.of(
@@ -81,7 +110,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
           style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.orange),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFFFF8901)),
           onPressed: () => Navigator.of(context).pop(_favorites),
         ),
       ),
@@ -122,7 +151,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
               ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.orange,
+        selectedItemColor: Color(0xFFFF8901),
         unselectedItemColor: Colors.grey,
         currentIndex: 3,
         onTap: (index) {
@@ -149,9 +178,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
         item['imageUrl']?.toString() ?? item['image']?.toString() ?? '';
     if (imageUrl.isNotEmpty && !imageUrl.startsWith('http')) {
       imageUrl = imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
-      imageUrl =
-          baseUrl +
-          imageUrl.substring(1); // Remove leading slash for concatenation
+      imageUrl = baseUrl + imageUrl.substring(1);
     }
     print('Loading image for ${item['name']}: $imageUrl');
 
@@ -187,7 +214,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
                 return const Icon(
                   Icons.fastfood,
                   size: 80,
-                  color: Colors.orange,
+                  color: Color(0xFFFF8901),
                 );
               },
             ),
@@ -198,7 +225,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item['name'] as String,
+                  item['name'] as String? ?? 'Producto sin nombre',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -206,18 +233,18 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  item['description'] as String,
+                  item['description'] as String? ?? 'Sin descripción',
                   style: TextStyle(color: Colors.grey[600]),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  item['price'] as String,
+                  item['price'] as String? ?? 'Bs. 0.00',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
-                    color: Colors.orange,
+                    color: Color(0xFFFF8901),
                   ),
                 ),
               ],

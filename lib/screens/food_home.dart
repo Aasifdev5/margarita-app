@@ -8,7 +8,6 @@ import 'package:margarita/screens/favourites.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -192,7 +191,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         setState(() {
           categories =
               data.map((category) {
-                // Add null checks for robustness
                 String imagePath =
                     category['image']?.replaceFirst('storage/', '') ??
                     'default.jpg';
@@ -523,48 +521,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
     }
   }
 
-  Future<void> _shareLocationViaWhatsApp(
-    String address,
-    String coordinates,
-  ) async {
-    try {
-      List<String> coords = coordinates.split(',');
-      double latitude = double.parse(coords[0]);
-      double longitude = double.parse(coords[1]);
-      String googleMapsLink =
-          'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
-      String message =
-          'Hola, aquí está mi ubicación para el envío:\n$address\n$googleMapsLink';
-      String whatsappUrl = 'whatsapp://send?text=${Uri.encodeFull(message)}';
-      String fallbackUrl = 'https://wa.me/?text=${Uri.encodeFull(message)}';
-
-      print('Attempting to share location via WhatsApp: $message');
-
-      if (await canLaunchUrl(Uri.parse(whatsappUrl))) {
-        await launchUrl(
-          Uri.parse(whatsappUrl),
-          mode: LaunchMode.externalApplication,
-        );
-      } else if (await canLaunchUrl(Uri.parse(fallbackUrl))) {
-        await launchUrl(
-          Uri.parse(fallbackUrl),
-          mode: LaunchMode.platformDefault,
-        );
-      } else {
-        throw 'No se pudo abrir WhatsApp ni el navegador.';
-      }
-    } catch (e) {
-      print('Error sharing location via WhatsApp: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Error al abrir WhatsApp. Asegúrate de tener WhatsApp instalado.',
-          ),
-        ),
-      );
-    }
-  }
-
   void _showLocationPopup() {
     print('Displaying location popup');
     showDialog(
@@ -575,7 +531,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          backgroundColor: Colors.orange,
+          backgroundColor: Color(0xFFFF8901),
           content: Row(
             children: [
               const Icon(Icons.location_on, color: Colors.white, size: 30),
@@ -633,10 +589,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                               locationData['city'],
                               locationData['coordinates'],
                             );
-                            await _shareLocationViaWhatsApp(
-                              locationData['address'],
-                              locationData['coordinates'],
-                            );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
@@ -662,7 +614,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
               child: const Text(
                 'Activar',
                 style: TextStyle(
-                  color: Colors.orange,
+                  color: Color(0xFFFF8901),
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -708,7 +660,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                     children: [
                       const Icon(
                         Icons.location_on,
-                        color: Colors.orange,
+                        color: Color(0xFFFF8901),
                         size: 24,
                       ),
                       const SizedBox(width: 8),
@@ -741,7 +693,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                 ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.search, color: Colors.orange, size: 28),
+            icon: const Icon(Icons.search, color: Color(0xFFFF8901), size: 28),
             onPressed: _toggleSearch,
           ),
         ],
@@ -754,9 +706,8 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
               vertical: 20.0,
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Slider Section
                 _isSliderLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _sliderErrorMessage != null
@@ -775,8 +726,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                         ],
                       ),
                     )
-                    : sliderItems.isEmpty
-                    ? const Center(child: Text('No se encontraron sliders'))
                     : CarouselSlider(
                       options: CarouselOptions(
                         height: 180,
@@ -829,7 +778,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                                               return const Icon(
                                                 Icons.local_pizza,
                                                 size: 100,
-                                                color: Colors.orange,
+                                                color: Color(0xFFFF8901),
                                               );
                                             },
                                           ),
@@ -876,8 +825,16 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                             );
                           }).toList(),
                     ),
+                const SizedBox(height: 16),
+                const Text(
+                  '¿Qué vamos a pedir hoy?',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFFF8901),
+                  ),
+                ),
                 const SizedBox(height: 24),
-                // Categories Section - Updated to show all categories
                 _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _errorMessage != null
@@ -908,6 +865,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 32.0),
                           child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               if (firstIndex < categories.length)
@@ -936,7 +894,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
       ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.orange,
+        selectedItemColor: Color(0xFFFF8901),
         unselectedItemColor: Colors.grey,
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
@@ -956,7 +914,6 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
 
   Widget _buildCategorySection(Map<String, dynamic> category) {
     String categoryId = category['category_id'];
-    String categoryName = category['name'];
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -967,13 +924,12 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         );
       },
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             height: 180,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
               children:
                   (category['products'] as List<Map<String, dynamic>>)
                       .asMap()
@@ -986,6 +942,7 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
                         return Padding(
                           padding: EdgeInsets.only(
                             right: isLastItem ? 0 : 16.0,
+                            left: 16.0,
                           ),
                           child: _buildFoodCard(
                             imageUrl: product['imageUrl'],
@@ -1009,38 +966,50 @@ class _FoodHomeScreenState extends State<FoodHomeScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: CachedNetworkImage(
-                imageUrl: imageUrl,
-                width: 120,
-                height: 120,
-                fit: BoxFit.cover,
-                placeholder:
-                    (context, url) =>
-                        const Center(child: CircularProgressIndicator()),
-                errorWidget: (context, url, error) {
-                  print('Category image loading error for $url: $error');
-                  return Container(
-                    width: 120,
-                    height: 120,
-                    color: Colors.grey[300],
-                    child: const Icon(
-                      Icons.fastfood,
-                      size: 60,
-                      color: Colors.orange,
-                    ),
-                  );
-                },
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.3),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  width: 120,
+                  height: 120,
+                  fit: BoxFit.cover,
+                  placeholder:
+                      (context, url) =>
+                          const Center(child: CircularProgressIndicator()),
+                  errorWidget: (context, url, error) {
+                    print('Category image loading error for $url: $error');
+                    return Container(
+                      width: 120,
+                      height: 120,
+                      color: Colors.grey[300],
+                      child: const Icon(
+                        Icons.fastfood,
+                        size: 60,
+                        color: Color(0xFFFF8901),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 8),
             Text(
               label,
               style: const TextStyle(
-                fontSize: 24,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Colors.red,
+                color: Color(0xFFFF8901),
               ),
               textAlign: TextAlign.center,
               maxLines: 1,
